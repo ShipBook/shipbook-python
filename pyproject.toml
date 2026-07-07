@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shipbook"
+dynamic = ["version"]
+description = "Shipbook logging SDK for Python servers — ships the standard library logging to Shipbook."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Shipbook", email = "support@shipbook.io" }]
+keywords = ["logging", "shipbook", "observability", "logs", "monitoring"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Logging",
+]
+dependencies = []
+
+[project.optional-dependencies]
+fastapi = ["starlette"]
+flask = ["flask"]
+django = ["django"]
+dev = ["pytest", "ruff", "mypy", "starlette", "httpx", "flask", "django", "build"]
+
+[project.urls]
+Homepage = "https://shipbook.io"
+Documentation = "https://docs.shipbook.io"
+Source = "https://github.com/ShipBook/shipbook-python"
+
+[tool.hatch.version]
+path = "src/shipbook/generated/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shipbook"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.mypy]
+ignore_missing_imports = true
