@@ -1,56 +1,48 @@
-import logging
 import sys
 import threading
+from typing import Any, Callable, Optional
 
-_logger = logging.getLogger("shipbook.uncaught")
+from ..models.exception import ExceptionLog
 
-_prev_excepthook = None
-_prev_threading_hook = None
-_installed = False
+# on_exception(exception, fatal): fatal is the main thread's, which ends the process.
+ExceptionCallback = Callable[[ExceptionLog, bool], None]
+
+_prev_excepthook: Any = None
+_prev_threading_hook: Any = None
+_on_exception: Optional[ExceptionCallback] = None
 
 
-def install() -> None:
-    """Route uncaught exceptions through ``logging`` (so they reach the
-    Shipbook handler) while preserving the previous hooks."""
-    global _prev_excepthook, _prev_threading_hook, _installed
-    if _installed:
+def install(on_exception: ExceptionCallback) -> None:
+    """Capture uncaught exceptions, then hand them to the previous hooks, which print them
+    (the interpreter then exits for the main thread's). Exceptions in asyncio tasks reach
+    ``logging`` (the ``asyncio`` logger) and are shipped as error messages."""
+    global _prev_excepthook, _prev_threading_hook, _on_exception
+    if _on_exception is not None:
         return
-    _installed = True
-
+    _on_exception = on_exception
     _prev_excepthook = sys.excepthook
-
-    def _excepthook(exc_type, exc_value, exc_tb):
-        if not issubclass(exc_type, KeyboardInterrupt):
-            _logger.error(
-                "Uncaught exception", exc_info=(exc_type, exc_value, exc_tb)
-            )
-        if _prev_excepthook is not None:
-            _prev_excepthook(exc_type, exc_value, exc_tb)
-
-    sys.excepthook = _excepthook
-
-    # threading.excepthook exists on Python 3.8+
     _prev_threading_hook = threading.excepthook
 
-    def _thread_excepthook(args):
-        if not issubclass(args.exc_type, KeyboardInterrupt):
-            _logger.error(
-                "Uncaught exception in thread %s",
-                args.thread.name if args.thread else "?",
-                exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
-            )
-        if _prev_threading_hook is not None:
-            _prev_threading_hook(args)
+    def _excepthook(exc_type, exc_value, exc_tb):
+        if _on_exception is not None and not issubclass(exc_type, KeyboardInterrupt):
+            _on_exception(ExceptionLog.from_exc_info(exc_type, exc_value, exc_tb), True)
+        _prev_excepthook(exc_type, exc_value, exc_tb)
 
+    def _thread_excepthook(args):
+        if _on_exception is not None and not issubclass(args.exc_type, KeyboardInterrupt):
+            _on_exception(
+                ExceptionLog.from_exc_info(args.exc_type, args.exc_value, args.exc_traceback), False
+            )
+        _prev_threading_hook(args)
+
+    sys.excepthook = _excepthook
     threading.excepthook = _thread_excepthook
 
 
 def uninstall() -> None:
-    global _installed
-    if not _installed:
+    global _on_exception
+    if _on_exception is None:
         return
-    if _prev_excepthook is not None:
-        sys.excepthook = _prev_excepthook
-    if _prev_threading_hook is not None:
-        threading.excepthook = _prev_threading_hook
-    _installed = False
+    sys.excepthook = _prev_excepthook
+    threading.excepthook = _prev_threading_hook
+    _on_exception = None

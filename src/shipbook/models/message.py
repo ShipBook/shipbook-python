@@ -7,37 +7,19 @@ from typing import Any, Optional
 
 from .._util import next_order_id, to_iso
 from ..severity import Severity
-
-
-def _stack_from_tb(tb) -> list[dict[str, Any]]:
-    return [
-        {
-            "methodName": frame.name,
-            "fileName": frame.filename,
-            "lineNumber": frame.lineno,
-        }
-        for frame in traceback.extract_tb(tb)
-    ]
-
-
-def _current_stack(skip_filename_fragments) -> list[dict[str, Any]]:
-    """The caller's stack with logging-machinery and SDK frames trimmed out."""
-    out: list[dict[str, Any]] = []
-    for frame in traceback.extract_stack():
-        if any(fragment in frame.filename for fragment in skip_filename_fragments):
-            continue
-        out.append(
-            {
-                "methodName": frame.name,
-                "fileName": frame.filename,
-                "lineNumber": frame.lineno,
-            }
-        )
-    return out
-
+from .exception import stack_from_traceback
 
 _LOGGING_DIR = os.path.dirname(logging.__file__)
 _SDK_DIR = os.path.dirname(os.path.dirname(__file__))
+
+
+def current_stack() -> list[dict[str, Any]]:
+    """The caller's stack with logging-machinery and SDK frames trimmed out."""
+    return [
+        {"methodName": frame.name, "fileName": frame.filename, "lineNumber": frame.lineno}
+        for frame in traceback.extract_stack()
+        if not frame.filename.startswith((_LOGGING_DIR, _SDK_DIR))
+    ]
 
 
 @dataclass
@@ -73,7 +55,7 @@ class Message:
 
         if record.exc_info and record.exc_info[0] is not None:
             exc_type, exc_value, exc_tb = record.exc_info
-            stack = _stack_from_tb(exc_tb)
+            stack = stack_from_traceback(exc_tb)
             msg.exception = {
                 "name": exc_type.__name__,
                 "reason": str(exc_value),
@@ -81,7 +63,7 @@ class Message:
             }
             msg.stack_trace = stack
         elif include_stack:
-            msg.stack_trace = _current_stack((_LOGGING_DIR, _SDK_DIR))
+            msg.stack_trace = getattr(record, "shipbook_stack", None) or current_stack()
 
         return msg
 
