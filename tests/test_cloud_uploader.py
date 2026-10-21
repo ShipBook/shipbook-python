@@ -40,7 +40,7 @@ def test_send_groups_logs_into_session_payload(uploader, connection):
     sessions = connection.ingested_sessions()
     assert len(sessions) == 1
     session = sessions[0]
-    assert session["platform"] == "node"
+    assert session["platform"] == "python"
     assert session["isBackground"] is True
     assert session["sdkInfo"]["version"].startswith("python:")
     assert session["deviceInfo"]["udid"]
@@ -123,7 +123,7 @@ def test_exception_log_is_its_own_type_and_never_held(connection, session_manage
     assert log["name"] == "ValueError"
     assert log["reason"] == "bad value"
     assert (
-        log["stackTrace"][-1]["methodName"] == "test_exception_log_is_its_own_type_and_never_held"
+        log["stackTrace"][0]["methodName"] == "test_exception_log_is_its_own_type_and_never_held"
     )
 
 
