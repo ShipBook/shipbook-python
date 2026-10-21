@@ -14,6 +14,9 @@ In your Django project's ``settings.py``:
 
     MIDDLEWARE = [
         # ... your other middleware ...
+        # After these two, so the request's session and user are available to it.
+        "django.contrib.sessions.middleware.SessionMiddleware",
+        "django.contrib.auth.middleware.AuthenticationMiddleware",
         "shipbook.integrations.django.ShipbookMiddleware",
     ]
 
