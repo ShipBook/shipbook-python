@@ -20,7 +20,7 @@ def test_stdlib_logging_produces_ingest_payload(active_runtime, connection):
     finally:
         log.removeHandler(handler)
 
-    active_runtime.uploader._send()
+    active_runtime.uploader.flush()
     sessions = connection.ingested_sessions()
     assert len(sessions) == 1
     logs = sessions[0]["logs"]
@@ -43,7 +43,7 @@ def test_exception_logging_ships_exception(active_runtime, connection):
     finally:
         log.removeHandler(handler)
 
-    active_runtime.uploader._send()
+    active_runtime.uploader.flush()
     entry = connection.ingested_sessions()[0]["logs"][0]
     assert entry["severity"] == "Error"
     assert entry["exception"]["name"] == "RuntimeError"
@@ -68,7 +68,7 @@ def test_config_gate_drops_below_threshold(active_runtime, connection):
     finally:
         log.removeHandler(handler)
 
-    active_runtime.uploader._send()
+    active_runtime.uploader.flush()
     messages = [entry["message"] for s in connection.ingested_sessions() for entry in s["logs"]]
     assert "kept" in messages
     assert "dropped" not in messages

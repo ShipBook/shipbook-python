@@ -15,11 +15,7 @@ from shipbook.storage import Storage
 
 def make_jwt(exp: float) -> str:
     header = base64.urlsafe_b64encode(b'{"alg":"HS256"}').decode().rstrip("=")
-    payload = (
-        base64.urlsafe_b64encode(json.dumps({"exp": int(exp)}).encode())
-        .decode()
-        .rstrip("=")
-    )
+    payload = base64.urlsafe_b64encode(json.dumps({"exp": int(exp)}).encode()).decode().rstrip("=")
     return f"{header}.{payload}.sig"
 
 
@@ -71,29 +67,52 @@ def connection():
     return FakeConnection()
 
 
+def config_with(flush_severity: str = "Verbose", **cloud) -> Config:
+    """The server config shape; Verbose flushSeverity is the VERBOSE type (nothing held)."""
+    return Config.from_dict(
+        {
+            "appenders": [
+                {
+                    "type": "SBCloudAppender",
+                    "name": "cloud",
+                    "config": {"maxTime": 3, "flushSeverity": flush_severity, **cloud},
+                }
+            ],
+            "loggers": [{"name": "", "severity": "Verbose", "appenderRef": "cloud"}],
+        }
+    )
+
+
 @pytest.fixture
 def config():
-    return Config.default()
+    return config_with()
 
 
 @pytest.fixture
-def uploader(connection, storage, config):
-    # A logged-in session manager so get_token() returns a live token.
+def session_manager(connection):
+    # Logged in, so get_token() returns a live token.
     sm = SessionManager(connection)  # type: ignore[arg-type]
     connection.when("auth/loginSdkServer", login_response())
     sm.login("app", "key")
+    yield sm
+    sm.destroy()
+
+
+@pytest.fixture
+def uploader(connection, session_manager, storage, config):
     up = CloudUploader(
-        connection, sm, storage, config, app_version="1.0.0", start_worker=False
+        connection, session_manager, storage, config, app_version="1.0.0", start_worker=False
     )
     yield up
-    sm.destroy()
+    up.shutdown(0)
 
 
 @pytest.fixture
 def active_runtime(uploader, config):
     """Wire the module-global state so ShipbookHandler.emit routes to our
     uploader, then tear it down."""
-    runtime = SimpleNamespace(config=config, uploader=uploader)
+    # Already configured, so nothing is held.
+    runtime = SimpleNamespace(config=config, uploader=uploader, when_configured=lambda fn: fn())
     _state.set_active(runtime)
     yield runtime
     _state.set_active(None)

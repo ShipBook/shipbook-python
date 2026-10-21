@@ -44,6 +44,13 @@ class SessionManager:
             self.on_config(config)
         return self.get_token() is not None
 
+    def after_fork(self) -> None:
+        """In a forked child: the parent's refresh timer thread is gone and its lock may be held."""
+        self._lock = threading.RLock()
+        self._timer = None
+        if self._token:
+            self._schedule(max((self._expires_at - time.time()) * 0.8, 1), self._proactive_refresh)
+
     def destroy(self) -> None:
         with self._lock:
             if self._timer:

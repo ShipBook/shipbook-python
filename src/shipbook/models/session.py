@@ -34,6 +34,7 @@ class Session:
     metadata: Optional[dict[str, Any]] = None
     is_background: bool = False
     job_name: Optional[str] = None
+    caller_session_link: Optional[str] = None
     logs: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -54,4 +55,6 @@ class Session:
             d["metadata"] = self.metadata
         if self.job_name is not None:
             d["jobName"] = self.job_name
+        if self.caller_session_link is not None:
+            d["callerSessionLink"] = self.caller_session_link
         return d
