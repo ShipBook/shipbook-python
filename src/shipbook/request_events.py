@@ -1,7 +1,7 @@
 import dataclasses
 import uuid
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -89,6 +89,9 @@ def open_request(
     ctx = dataclasses.replace(
         session, request_id=str(uuid.uuid4()), start_time=datetime.now(timezone.utc)
     )
+    runtime = _state.get_active()
+    if runtime is not None:
+        runtime.when_configured(lambda: runtime.uploader.start_request(ctx))
     start = RequestEvent(RequestEventPhase.Start, kind, operation=operation)
     _push(ctx, start)
 
@@ -114,7 +117,20 @@ def open_request(
 
 
 @contextmanager
-def run_in_request(kind: RequestKind, operation: str) -> Iterator[RequestContext]:
+def _run_request(
+    session: RequestContext, kind: RequestKind, operation: str
+) -> Iterator[RequestContext]:
+    ctx, end = open_request(session, kind, operation)
+    try:
+        with _context.run(ctx):
+            yield ctx
+    except BaseException:
+        end(RequestOutcome.Error, None)
+        raise
+    end(RequestOutcome.Ok, None)
+
+
+def run_in_request(kind: RequestKind, operation: str) -> AbstractContextManager[RequestContext]:
     """Runs the block as one request of the current session (the process's background
     session outside any), ending with how the block finishes::
 
@@ -125,11 +141,20 @@ def run_in_request(kind: RequestKind, operation: str) -> Iterator[RequestContext
     session = _context.get() or (runtime.uploader.background_context if runtime else None)
     if session is None:
         session = RequestContext(session_id=str(uuid.uuid4()), is_background=True)
-    ctx, end = open_request(session, kind, operation)
-    try:
-        with _context.run(ctx):
-            yield ctx
-    except BaseException:
-        end(RequestOutcome.Error, None)
-        raise
-    end(RequestOutcome.Ok, None)
+    return _run_request(session, kind, operation)
+
+
+def run_job(
+    job_name: str, metadata: Optional[dict[str, Any]] = None
+) -> AbstractContextManager[RequestContext]:
+    """Runs the block as a job run: its own session, run as one request of kind Job, so it
+    is counted like an HTTP request and its start and end carry the job name, the duration
+    and whether it raised::
+
+        with shipbook.run_in_context("nightly-billing"):
+            charge_customers()
+    """
+    session = RequestContext(
+        session_id=str(uuid.uuid4()), metadata=metadata, is_background=True, job_name=job_name
+    )
+    return _run_request(session, RequestKind.Job, job_name)

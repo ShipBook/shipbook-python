@@ -12,13 +12,13 @@ cloud — there is no separate Shipbook logging API::
 
 from ._inner_log import enable_inner_log
 from .context import preserve_context, register_user
-from .context import run_job as run_in_context
 from .generated.version import SDK_VERSION, __version__
 from .handler import ShipbookHandler
 from .models.request_context import RequestContext
 from .models.request_event import RequestKind, RequestOutcome
 from .models.user import User
 from .request_events import run_in_request
+from .request_events import run_job as run_in_context
 from .severity import Severity
 from .shipbook import (
     flush,
