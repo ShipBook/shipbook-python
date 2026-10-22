@@ -19,8 +19,9 @@ class DeviceInfo:
 
 @dataclass
 class Session:
-    """One logical unit of work — an HTTP request or a background job — that
-    logs are grouped under on the server (via ``sessionId``)."""
+    """What logs are grouped under on the server (via ``sessionId``): one request, a
+    group of them, or a job's run. ``requests`` counts the requests started in it since
+    the last upload; the server adds them up."""
 
     session_id: str
     platform: str
@@ -35,6 +36,7 @@ class Session:
     is_background: bool = False
     job_name: Optional[str] = None
     caller_session_link: Optional[str] = None
+    requests: int = 0
     logs: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -47,6 +49,7 @@ class Session:
             "appInfo": {"version": self.app_version},
             "sdkInfo": {"version": self.sdk_version},
             "isBackground": self.is_background,
+            "requests": self.requests,
             "logs": self.logs,
         }
         if self.user is not None:

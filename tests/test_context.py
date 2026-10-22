@@ -1,5 +1,6 @@
 import threading
 
+import shipbook
 from shipbook import context
 
 
@@ -12,18 +13,20 @@ def test_run_sets_and_resets():
     assert context.get() is None
 
 
-def test_run_job_marks_background():
-    with context.run_job(job_name="nightly", metadata={"k": "v"}) as ctx:
+def test_run_in_context_marks_background_and_runs_a_request():
+    with shipbook.run_in_context(job_name="nightly", metadata={"k": "v"}) as ctx:
         active = context.get()
         assert active is ctx
         assert active.is_background is True
         assert active.job_name == "nightly"
         assert active.metadata == {"k": "v"}
         assert active.session_id
+        assert active.request_id
+    assert context.get() is None
 
 
 def test_register_user_on_active_context():
-    with context.run_job(job_name="j"):
+    with shipbook.run_in_context(job_name="j"):
         context.register_user("u1", email="a@b.com")
         assert context.get().user.user_id == "u1"
         assert context.get().user.email == "a@b.com"

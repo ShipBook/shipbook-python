@@ -58,6 +58,7 @@ def test_run_in_request_is_one_request_of_the_background_session(active_runtime,
     assert (start["event"], start["kind"], start["operation"]) == ("start", "rpc", "process order")
     assert (end["event"], end["outcome"], end["startOrderId"]) == ("end", "ok", start["orderId"])
     assert start["requestId"] == end["requestId"] == ctx.request_id
+    assert connection.ingested_sessions()[0]["requests"] == 1
 
 
 def test_run_in_request_ends_with_an_error_and_reraises(active_runtime, connection):
@@ -74,6 +75,40 @@ def test_run_in_request_joins_the_current_session(active_runtime, connection):
         with shipbook.run_in_request(shipbook.RequestKind.Rpc, "step") as ctx:
             assert ctx.session_id == job.session_id
             assert ctx.request_id and ctx.request_id != job.request_id
+
+
+def test_run_in_context_runs_the_job_as_a_request(active_runtime, connection):
+    with shipbook.run_in_context("nightly", metadata={"k": "v"}) as ctx:
+        assert context.get() is ctx
+        _log(active_runtime)
+    active_runtime.uploader.flush()
+
+    [session] = connection.ingested_sessions()
+    assert (session["jobName"], session["isBackground"], session["metadata"]) == (
+        "nightly",
+        True,
+        {"k": "v"},
+    )
+    assert session["requests"] == 1
+    start, end = _events(connection)
+    assert (start["kind"], start["operation"], end["outcome"]) == ("job", "nightly", "ok")
+    assert start["requestId"] == end["requestId"] == ctx.request_id
+
+
+def test_run_in_context_ends_as_an_error_and_reraises(active_runtime, connection):
+    with pytest.raises(ValueError):
+        with shipbook.run_in_context("nightly"):
+            raise ValueError("boom")
+    active_runtime.uploader.flush()
+    assert _events(connection)[-1]["outcome"] == "error"
+
+
+def test_each_job_run_is_its_own_session(active_runtime, connection):
+    with shipbook.run_in_context("nightly") as first:
+        pass
+    with shipbook.run_in_context("nightly") as second:
+        pass
+    assert first.session_id != second.session_id
 
 
 def test_open_request_records_an_rpc_error_code(active_runtime, connection):

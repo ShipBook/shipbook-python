@@ -15,6 +15,7 @@ class RequestEventPhase(str, Enum):
 class RequestKind(str, Enum):
     Http = "http"
     Rpc = "rpc"
+    Job = "job"
 
 
 # Whether a request failed, the same for every kind; each kind maps its own result onto it.

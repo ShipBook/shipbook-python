@@ -111,7 +111,7 @@ class CloudUploader:
             data["requestTime"] = to_iso(ctx.start_time)
 
         with self._lock:
-            self._ensure_session(ctx)
+            session = self._session(ctx)
             flush_queue = self._flush_queues.get(ctx)
             if flush_queue is None:
                 flush_queue = self._flush_queues[ctx] = _FlushQueue()
@@ -124,27 +124,29 @@ class CloudUploader:
 
             # The flushQueue is this log's context: it is saved with it, in order.
             saved = [*flush_queue.logs, data]
-            self._cloud_queue[ctx.session_id]["logs"].extend(saved)
+            session["logs"].extend(saved)
             self._queue_size += len(saved)
             flush_queue.logs = []
             flush_queue.saved = True
             self._after_save()
 
-    def ensure_session(self, ctx: RequestContext) -> None:
-        """Queue the session's record, so sessions whose logs all stay below flush_severity
-        still reach the server and are counted there."""
+    def start_request(self, ctx: RequestContext) -> None:
+        """A request began in ``ctx``: queue its session and count it, whether or not it logs.
+        Counted on the session, not as a log, so the server adds it up and a request whose
+        logs all stay below flush_severity still counts."""
         with self._lock:
-            self._ensure_session(ctx)
+            self._session(ctx)["requests"] += 1
 
-    def _ensure_session(self, ctx: RequestContext) -> None:
+    def _session(self, ctx: RequestContext) -> dict[str, Any]:
         if self._queue_size >= self._config.max_log_size:
             inner_log.debug("cloud queue over max_log_size, dropping it")
             self._cloud_queue.clear()
             self._queue_size = 0
-        if ctx.session_id in self._cloud_queue:
-            return
+        queued = self._cloud_queue.get(ctx.session_id)
+        if queued is not None:
+            return queued
 
-        self._cloud_queue[ctx.session_id] = Session(
+        session = self._cloud_queue[ctx.session_id] = Session(
             session_id=ctx.session_id,
             platform=_PLATFORM,
             time=to_iso(ctx.start_time),
@@ -161,6 +163,7 @@ class CloudUploader:
         ).to_dict()
         self._queue_size += 1
         self._after_save()
+        return session
 
     def _is_held(self, log: Log, flush_queue: _FlushQueue) -> bool:
         if isinstance(log, Message):
@@ -258,6 +261,7 @@ class CloudUploader:
                     self._queue_size += 1 + len(session["logs"])
                 else:
                     queued["logs"][:0] = session["logs"]
+                    queued["requests"] += session["requests"]
                     self._queue_size += len(session["logs"])
             if self._deadline is None:
                 self._deadline = time.monotonic() + self._config.max_time

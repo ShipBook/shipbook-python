@@ -1,9 +1,8 @@
 import contextvars
 import functools
-import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 from .models.request_context import RequestContext
 from .models.user import User
@@ -32,20 +31,6 @@ def run(context: RequestContext) -> Iterator[RequestContext]:
         yield context
     finally:
         _ctx.reset(token)
-
-
-@contextmanager
-def run_job(
-    job_name: str, metadata: Optional[dict[str, Any]] = None
-) -> Iterator[RequestContext]:
-    context = RequestContext(
-        session_id=str(uuid.uuid4()),
-        metadata=metadata,
-        is_background=True,
-        job_name=job_name,
-    )
-    with run(context) as c:
-        yield c
 
 
 def preserve_context(fn: Callable) -> Callable:

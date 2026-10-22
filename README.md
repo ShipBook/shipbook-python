@@ -112,6 +112,8 @@ with shipbook.run_in_context(job_name="nightly-billing"):
     logging.getLogger(__name__).info("charging customers")
 ```
 
+Each run is its own session and counts as one request, like an HTTP request: it appears in the request counts and error rates, and the Logbook shows when it started, how long it took, and whether it raised.
+
 Anything logged outside a request or job falls back to a per-process background session — nothing is lost.
 
 To read other units of work (a queue message, a scheduled task) the way requests are read, run each one as a request:

@@ -61,10 +61,9 @@ def request_context(
         },
         is_background=False,
     )
-    # Without this, sessions whose logs all stay below flush_severity never reach the server.
     runtime = _state.get_active()
     if runtime is not None:
-        runtime.when_configured(lambda: runtime.uploader.ensure_session(ctx))
+        runtime.when_configured(lambda: runtime.uploader.start_request(ctx))
     return ctx
 
 

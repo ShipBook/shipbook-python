@@ -108,6 +108,30 @@ def test_requeues_when_unreachable_or_on_a_server_error_but_not_on_a_4xx(uploade
     assert _ingest_calls(connection) == []
 
 
+def test_counts_a_sessions_requests_and_none_for_a_session_that_only_logged(uploader, connection):
+    grouped = RequestContext(session_id="grouped")
+    uploader.start_request(grouped)
+    uploader.start_request(grouped)
+    with context.run(RequestContext(session_id="logged-only")):
+        uploader.push(_msg())
+    uploader.flush()
+
+    requests = {s["sessionId"]: s["requests"] for s in connection.ingested_sessions()}
+    assert requests == {"grouped": 2, "logged-only": 0}
+
+
+def test_requeue_adds_the_requests_counted_meanwhile(uploader, connection):
+    ctx = RequestContext(session_id="s")
+    connection.when("sessions/ingest", Response(ok=False, status=503, reason="err"))
+    uploader.start_request(ctx)
+    uploader.flush()
+    uploader.start_request(ctx)
+    connection.when("sessions/ingest", Response(ok=True, status=200, reason="OK", data={}))
+    connection.requests.clear()
+    uploader.flush()
+    assert [s["requests"] for s in connection.ingested_sessions()] == [2]
+
+
 def test_exception_log_is_its_own_type_and_never_held(connection, session_manager, storage):
     up = CloudUploader(
         connection, session_manager, storage, config_with("Error"), start_worker=False
