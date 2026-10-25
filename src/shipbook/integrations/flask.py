@@ -5,7 +5,7 @@ from flask import g, request
 from .. import context as _context
 from ..models.user import User
 from ..request_events import HttpRequest, json_rpc_operation
-from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context
+from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_metadata
 
 _TOKEN_KEY = "_shipbook_ctx_token"
 _TRACKER_KEY = "_shipbook_request"
@@ -31,16 +31,12 @@ def init_app(
 
     @app.before_request
     def _shipbook_before():
-        ctx = request_context(
-            request,
-            extractors,
-            request.headers.get,
-            request.method,
-            request.path,
-            request.remote_addr,
+        ctx = request_context(request, extractors, request.headers.get)
+        metadata = request_metadata(
+            request, extractors, request.headers.get, request.path, request.remote_addr
         )
         setattr(g, _TOKEN_KEY, _context.set_context(ctx))
-        setattr(g, _TRACKER_KEY, HttpRequest(ctx, request.method, route()))
+        setattr(g, _TRACKER_KEY, HttpRequest(ctx, request.method, route(), metadata=metadata))
 
     @app.after_request
     def _shipbook_after(response):

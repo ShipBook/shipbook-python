@@ -48,12 +48,17 @@ class HttpRequest:
     routing and body parsing may only be done by the end, so the end takes them again."""
 
     def __init__(
-        self, ctx: RequestContext, method: str, route: str, operation: Optional[str] = None
+        self,
+        ctx: RequestContext,
+        method: str,
+        route: str,
+        operation: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         self._ctx = ctx
         self._method = method
         self._start = RequestEvent(
-            RequestEventPhase.Start, RequestKind.Http, method, route, operation
+            RequestEventPhase.Start, RequestKind.Http, method, route, operation, metadata=metadata
         )
         _push(ctx, self._start)
 

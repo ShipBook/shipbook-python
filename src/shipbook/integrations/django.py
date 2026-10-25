@@ -6,7 +6,7 @@ from .. import context as _context
 from ..models.request_context import RequestContext
 from ..models.user import User
 from ..request_events import HttpRequest, json_rpc_operation
-from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context
+from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_metadata
 
 
 class ShipbookMiddleware:
@@ -69,15 +69,15 @@ class ShipbookMiddleware:
 
     def _start(self, request) -> tuple[RequestContext, HttpRequest]:
         meta = request.META
-        ctx = request_context(
-            request,
-            self._extractors,
-            lambda name: meta.get("HTTP_" + name.upper().replace("-", "_")),
-            request.method,
-            request.path,
-            meta.get("REMOTE_ADDR"),
+
+        def header(name: str) -> Optional[str]:
+            return meta.get("HTTP_" + name.upper().replace("-", "_"))
+
+        ctx = request_context(request, self._extractors, header)
+        metadata = request_metadata(
+            request, self._extractors, header, request.path, meta.get("REMOTE_ADDR")
         )
-        return ctx, HttpRequest(ctx, request.method, request.path)
+        return ctx, HttpRequest(ctx, request.method, request.path, metadata=metadata)
 
     def _end(self, request, tracker: HttpRequest, status: int) -> None:
         match = getattr(request, "resolver_match", None)

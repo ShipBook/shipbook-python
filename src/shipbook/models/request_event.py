@@ -39,6 +39,8 @@ class RequestEvent:
     outcome: Optional[RequestOutcome] = None
     duration: Optional[int] = None  # ms
     error_code: Optional[int] = None  # rpc: the JSON-RPC error code
+    # Start only: the request's facts beyond its route (path, ip, user agent, the app's extractor).
+    metadata: Optional[dict[str, Any]] = None
     order_id: int = field(default_factory=next_order_id)
     time: str = field(default_factory=lambda: to_iso(datetime.now(timezone.utc)))
 
@@ -60,6 +62,7 @@ class RequestEvent:
             "outcome": self.outcome.value if self.outcome else None,
             "duration": self.duration,
             "errorCode": self.error_code,
+            "metadata": self.metadata,
         }
         d.update({key: value for key, value in optional.items() if value is not None})
         return d

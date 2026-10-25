@@ -23,6 +23,8 @@ class RequestContext:
     # The raw x-shipbook-session header of a linked caller; parsed by the server.
     caller_session_link: Optional[str] = None
     user: Optional[User] = None
+    # Session-level, constant for its life (a job's options, an MCP transport);
+    # a request's facts go on its start event.
     metadata: Optional[dict[str, Any]] = None
     is_background: bool = False
     job_name: Optional[str] = None

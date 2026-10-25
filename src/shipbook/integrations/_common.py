@@ -22,6 +22,7 @@ class Extractors(Generic[R]):
     # Groups requests into one session (e.g. a login session); by default each is its own.
     session: Optional[Callable[[R], Optional[str]]] = None
     trace: Optional[Callable[[R], Optional[str]]] = None
+    # Stored on the request's start event, with its path, ip and user agent.
     metadata: Optional[Callable[[R], dict[str, Any]]] = None
 
 
@@ -38,9 +39,6 @@ def request_context(
     request: R,
     extractors: Extractors[R],
     header: Callable[[str], Optional[str]],
-    method: str,
-    path: str,
-    ip: Optional[str],
 ) -> RequestContext:
     caller_session_link = header(SESSION_LINK_HEADER)
     session_id = extractors.session(request) if extractors.session else None
@@ -52,19 +50,27 @@ def request_context(
         request_id=str(uuid.uuid4()),
         caller_session_link=caller_session_link,
         user=extractors.user(request) if extractors.user else None,
-        metadata={
-            "method": method,
-            "path": path,
-            "ip": ip,
-            "userAgent": header("user-agent"),
-            **(extractors.metadata(request) if extractors.metadata else {}),
-        },
         is_background=False,
     )
     runtime = _state.get_active()
     if runtime is not None:
         runtime.when_configured(lambda: runtime.uploader.start_request(ctx))
     return ctx
+
+
+def request_metadata(
+    request: R,
+    extractors: Extractors[R],
+    header: Callable[[str], Optional[str]],
+    path: str,
+    ip: Optional[str],
+) -> dict[str, Any]:
+    return {
+        "path": path,
+        "ip": ip,
+        "userAgent": header("user-agent"),
+        **(extractors.metadata(request) if extractors.metadata else {}),
+    }
 
 
 def json_body(content_type: Optional[str], read: Callable[[], bytes]) -> Any:
