@@ -73,14 +73,14 @@ init_app(app)
 "shipbook.integrations.django.ShipbookMiddleware"
 ```
 
-Customize each request with extractors (FastAPI/Flask keyword arguments; on Django, subclass and override `get_user`, `get_session_id`, `get_trace_id`, `get_metadata`):
+Customize each request with extractors (FastAPI/Flask keyword arguments; on Django, subclass and override `get_user`, `get_session_id`, `get_trace_id`, `get_attributes`):
 
 ```python
 app.add_middleware(
     ShipbookMiddleware,
     user_extractor=lambda request: shipbook.User(user_id=request.headers.get("x-user-id")),
     session_extractor=lambda request: request.cookies.get("login"),  # group requests into one session
-    metadata_extractor=lambda request: {"tenant": request.headers.get("x-tenant")},
+    attributes_extractor=lambda request: {"tenant": request.headers.get("x-tenant")},
 )
 ```
 

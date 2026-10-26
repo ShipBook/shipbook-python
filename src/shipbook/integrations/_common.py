@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Generic, Optional, TypeVar
 
 from .. import _state
+from ..models.attributes import Attributes
 from ..models.request_context import RequestContext
 from ..models.user import User
 
@@ -22,8 +23,8 @@ class Extractors(Generic[R]):
     # Groups requests into one session (e.g. a login session); by default each is its own.
     session: Optional[Callable[[R], Optional[str]]] = None
     trace: Optional[Callable[[R], Optional[str]]] = None
-    # Stored on the request's start event, with its path, ip and user agent.
-    metadata: Optional[Callable[[R], dict[str, Any]]] = None
+    # The app's own facts about the request, stored on its start event.
+    attributes: Optional[Callable[[R], Attributes]] = None
 
 
 def trace_from_headers(get: Callable[[str], Optional[str]]) -> Optional[str]:
@@ -58,18 +59,19 @@ def request_context(
     return ctx
 
 
-def request_metadata(
+def request_facts(
     request: R,
     extractors: Extractors[R],
     header: Callable[[str], Optional[str]],
     path: str,
     ip: Optional[str],
 ) -> dict[str, Any]:
+    """The start event's keyword arguments: the concrete path, the client, the app's attributes."""
     return {
         "path": path,
         "ip": ip,
-        "userAgent": header("user-agent"),
-        **(extractors.metadata(request) if extractors.metadata else {}),
+        "user_agent": header("user-agent"),
+        "attributes": (extractors.attributes(request) if extractors.attributes else None) or None,
     }
 
 

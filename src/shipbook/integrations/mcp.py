@@ -25,9 +25,7 @@ class ShipbookMiddleware:
     """
 
     def __init__(self) -> None:
-        self._session = RequestContext(
-            session_id=str(uuid.uuid4()), is_background=False, metadata={"transport": "mcp"}
-        )
+        self._session = RequestContext(session_id=str(uuid.uuid4()), is_background=False)
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext

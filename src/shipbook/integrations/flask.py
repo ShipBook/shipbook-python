@@ -3,9 +3,10 @@ from typing import Any, Callable, Optional
 from flask import g, request
 
 from .. import context as _context
+from ..models.attributes import Attributes
 from ..models.user import User
 from ..request_events import HttpRequest, json_rpc_operation
-from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_metadata
+from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_facts
 
 _TOKEN_KEY = "_shipbook_ctx_token"
 _TRACKER_KEY = "_shipbook_request"
@@ -17,14 +18,16 @@ def init_app(
     user_extractor: Optional[Callable[[Any], Optional[User]]] = None,
     session_extractor: Optional[Callable[[Any], Optional[str]]] = None,
     trace_extractor: Optional[Callable[[Any], Optional[str]]] = None,
-    metadata_extractor: Optional[Callable[[Any], dict[str, Any]]] = None,
+    attributes_extractor: Optional[Callable[[Any], Attributes]] = None,
 ) -> None:
     """Bind each Flask request to a Shipbook session and record its start and end::
 
     from shipbook.integrations.flask import init_app
     init_app(app)
     """
-    extractors = Extractors(user_extractor, session_extractor, trace_extractor, metadata_extractor)
+    extractors = Extractors(
+        user_extractor, session_extractor, trace_extractor, attributes_extractor
+    )
 
     def route() -> str:
         return request.url_rule.rule if request.url_rule else request.path
@@ -32,11 +35,11 @@ def init_app(
     @app.before_request
     def _shipbook_before():
         ctx = request_context(request, extractors, request.headers.get)
-        metadata = request_metadata(
+        facts = request_facts(
             request, extractors, request.headers.get, request.path, request.remote_addr
         )
         setattr(g, _TOKEN_KEY, _context.set_context(ctx))
-        setattr(g, _TRACKER_KEY, HttpRequest(ctx, request.method, route(), metadata=metadata))
+        setattr(g, _TRACKER_KEY, HttpRequest(ctx, request.method, route(), **facts))
 
     @app.after_request
     def _shipbook_after(response):

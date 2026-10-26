@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Any, Optional
 
 from .._util import next_order_id, to_iso
+from .attributes import Attributes
 
 
 class RequestEventPhase(str, Enum):
@@ -39,8 +40,11 @@ class RequestEvent:
     outcome: Optional[RequestOutcome] = None
     duration: Optional[int] = None  # ms
     error_code: Optional[int] = None  # rpc: the JSON-RPC error code
-    # Start only: the request's facts beyond its route (path, ip, user agent, the app's extractor).
-    metadata: Optional[dict[str, Any]] = None
+    # Start only: the concrete path (route is the template), the client, and the app's own facts.
+    path: Optional[str] = None
+    ip: Optional[str] = None
+    user_agent: Optional[str] = None
+    attributes: Optional[Attributes] = None
     order_id: int = field(default_factory=next_order_id)
     time: str = field(default_factory=lambda: to_iso(datetime.now(timezone.utc)))
 
@@ -62,7 +66,10 @@ class RequestEvent:
             "outcome": self.outcome.value if self.outcome else None,
             "duration": self.duration,
             "errorCode": self.error_code,
-            "metadata": self.metadata,
+            "path": self.path,
+            "ip": self.ip,
+            "userAgent": self.user_agent,
+            "attributes": self.attributes,
         }
         d.update({key: value for key, value in optional.items() if value is not None})
         return d

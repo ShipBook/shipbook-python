@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional
 
 from . import _state
 from . import context as _context
+from .models.attributes import Attributes
 from .models.request_context import RequestContext
 from .models.request_event import RequestEvent, RequestEventPhase, RequestKind, RequestOutcome
 
@@ -53,12 +54,24 @@ class HttpRequest:
         method: str,
         route: str,
         operation: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        *,
+        path: Optional[str] = None,
+        ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        attributes: Optional[Attributes] = None,
     ) -> None:
         self._ctx = ctx
         self._method = method
         self._start = RequestEvent(
-            RequestEventPhase.Start, RequestKind.Http, method, route, operation, metadata=metadata
+            RequestEventPhase.Start,
+            RequestKind.Http,
+            method,
+            route,
+            operation,
+            path=path,
+            ip=ip,
+            user_agent=user_agent,
+            attributes=attributes,
         )
         _push(ctx, self._start)
 
@@ -150,7 +163,7 @@ def run_in_request(kind: RequestKind, operation: str) -> AbstractContextManager[
 
 
 def run_job(
-    job_name: str, metadata: Optional[dict[str, Any]] = None
+    job_name: str, attributes: Optional[Attributes] = None
 ) -> AbstractContextManager[RequestContext]:
     """Runs the block as a job run: its own session, run as one request of kind Job, so it
     is counted like an HTTP request and its start and end carry the job name, the duration
@@ -160,6 +173,6 @@ def run_job(
             charge_customers()
     """
     session = RequestContext(
-        session_id=str(uuid.uuid4()), metadata=metadata, is_background=True, job_name=job_name
+        session_id=str(uuid.uuid4()), attributes=attributes, is_background=True, job_name=job_name
     )
     return _run_request(session, RequestKind.Job, job_name)
