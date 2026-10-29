@@ -6,6 +6,7 @@ from typing import Any, Callable, Generic, Optional, TypeVar
 from .. import _state
 from ..models.attributes import Attributes
 from ..models.request_context import RequestContext
+from ..models.request_event import RequestEvent, RequestEventPhase, RequestKind
 from ..models.user import User
 
 SESSION_LINK_HEADER = "x-shipbook-session"
@@ -59,20 +60,25 @@ def request_context(
     return ctx
 
 
-def request_facts(
+def request_start(
     request: R,
     extractors: Extractors[R],
     header: Callable[[str], Optional[str]],
+    method: str,
+    route: str,
     path: str,
     ip: Optional[str],
-) -> dict[str, Any]:
-    """The start event's keyword arguments: the concrete path, the client, the app's attributes."""
-    return {
-        "path": path,
-        "ip": ip,
-        "user_agent": header("user-agent"),
-        "attributes": (extractors.attributes(request) if extractors.attributes else None) or None,
-    }
+) -> RequestEvent:
+    return RequestEvent(
+        RequestEventPhase.Start,
+        RequestKind.Http,
+        method,
+        route,
+        path=path,
+        ip=ip,
+        user_agent=header("user-agent"),
+        attributes=(extractors.attributes(request) if extractors.attributes else None) or None,
+    )
 
 
 def json_body(content_type: Optional[str], read: Callable[[], bytes]) -> Any:

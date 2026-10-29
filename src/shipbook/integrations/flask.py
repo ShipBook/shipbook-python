@@ -6,7 +6,7 @@ from .. import context as _context
 from ..models.attributes import Attributes
 from ..models.user import User
 from ..request_events import HttpRequest, json_rpc_operation
-from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_facts
+from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_start
 
 _TOKEN_KEY = "_shipbook_ctx_token"
 _TRACKER_KEY = "_shipbook_request"
@@ -35,11 +35,17 @@ def init_app(
     @app.before_request
     def _shipbook_before():
         ctx = request_context(request, extractors, request.headers.get)
-        facts = request_facts(
-            request, extractors, request.headers.get, request.path, request.remote_addr
+        start = request_start(
+            request,
+            extractors,
+            request.headers.get,
+            request.method,
+            route(),
+            request.path,
+            request.remote_addr,
         )
         setattr(g, _TOKEN_KEY, _context.set_context(ctx))
-        setattr(g, _TRACKER_KEY, HttpRequest(ctx, request.method, route(), **facts))
+        setattr(g, _TRACKER_KEY, HttpRequest(ctx, start))
 
     @app.after_request
     def _shipbook_after(response):

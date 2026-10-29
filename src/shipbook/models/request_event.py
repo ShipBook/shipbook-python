@@ -40,7 +40,7 @@ class RequestEvent:
     outcome: Optional[RequestOutcome] = None
     duration: Optional[int] = None  # ms
     error_code: Optional[int] = None  # rpc: the JSON-RPC error code
-    # Start only: the concrete path (route is the template), the client, and the app's own facts.
+    # The concrete path (route is the template), the client, and the app's own facts.
     path: Optional[str] = None
     ip: Optional[str] = None
     user_agent: Optional[str] = None

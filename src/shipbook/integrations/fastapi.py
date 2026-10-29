@@ -7,7 +7,7 @@ from .. import context as _context
 from ..models.attributes import Attributes
 from ..models.user import User
 from ..request_events import HttpRequest, json_rpc_operation
-from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_facts
+from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_start
 
 
 class ShipbookMiddleware:
@@ -41,10 +41,12 @@ class ShipbookMiddleware:
 
         request = Request(scope)
         ctx = request_context(request, self._extractors, request.headers.get)
-        facts = request_facts(
+        start = request_start(
             request,
             self._extractors,
             request.headers.get,
+            request.method,
+            request.url.path,
             request.url.path,
             request.client.host if request.client else None,
         )
@@ -80,7 +82,7 @@ class ShipbookMiddleware:
             if message["type"] == "http.response.body" and not message.get("more_body", False):
                 end()
 
-        tracker = HttpRequest(ctx, request.method, request.url.path, **facts)
+        tracker = HttpRequest(ctx, start)
         token = _context.set_context(ctx)
         try:
             await self.app(scope, receive_body, send_status)

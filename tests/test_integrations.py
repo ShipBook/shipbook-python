@@ -64,7 +64,7 @@ def test_starlette_binds_the_request_and_records_its_start_and_end(active_runtim
     assert (start["path"], start["ip"], start["userAgent"]) == ("/items/7", "testclient", "pytest")
     assert "attributes" not in start
     assert end["event"] == "end"
-    assert "path" not in end and "ip" not in end and "userAgent" not in end
+    assert (end["path"], end["ip"], end["userAgent"]) == ("/items/7", "testclient", "pytest")
     assert end["route"] == "/items/{item_id}"
     assert (end["status"], end["outcome"]) == (200, "ok")
     assert end["startOrderId"] == start["orderId"]
@@ -130,7 +130,7 @@ def test_starlette_joins_the_callers_session_and_uses_the_extractors(active_runt
     assert ctx.user.user_id == "u1"
     sessions = _sent(active_runtime.uploader, connection)
     assert sessions[0]["callerSessionLink"] == "1:client-app:client-sess"
-    assert _request_events(sessions)[0]["attributes"] == {"tenant": "acme"}
+    assert [e["attributes"] for e in _request_events(sessions)] == [{"tenant": "acme"}] * 2
 
 
 def test_flask_binds_the_request_and_records_its_route_and_status(active_runtime, connection):
