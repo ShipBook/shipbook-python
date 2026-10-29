@@ -56,10 +56,12 @@ class HttpRequest:
     def end(self, status: int, route: str, operation: Optional[str] = None) -> None:
         # As for an HTTP server span: a 4xx is the client's mistake, only a 5xx failed the request.
         outcome = RequestOutcome.Error if status >= 500 else RequestOutcome.Ok
-        _push(self._ctx, _end_of(self._start, self._ctx, route, operation, status, outcome))
+        _push(
+            self._ctx, _end_request_event(self._start, self._ctx, route, operation, status, outcome)
+        )
 
 
-def _end_of(
+def _end_request_event(
     start: RequestEvent,
     ctx: RequestContext,
     route: Optional[str],
@@ -107,7 +109,7 @@ def open_request(
     _push(ctx, start)
 
     def end(outcome: RequestOutcome, error_code: Optional[int] = None) -> None:
-        _push(ctx, _end_of(start, ctx, None, operation, None, outcome, error_code))
+        _push(ctx, _end_request_event(start, ctx, None, operation, None, outcome, error_code))
 
     return ctx, end
 
