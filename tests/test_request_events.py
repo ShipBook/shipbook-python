@@ -78,13 +78,13 @@ def test_run_in_request_joins_the_current_session(active_runtime, connection):
 
 
 def test_run_in_context_runs_the_job_as_a_request(active_runtime, connection):
-    with shipbook.run_in_context("nightly", metadata={"k": "v"}) as ctx:
+    with shipbook.run_in_context("nightly", attributes={"k": "v"}) as ctx:
         assert context.get() is ctx
         _log(active_runtime)
     active_runtime.uploader.flush()
 
     [session] = connection.ingested_sessions()
-    assert (session["jobName"], session["isBackground"], session["metadata"]) == (
+    assert (session["jobName"], session["isBackground"], session["attributes"]) == (
         "nightly",
         True,
         {"k": "v"},

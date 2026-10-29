@@ -15,7 +15,7 @@ log = logging.getLogger("example.job")
 
 
 def run_billing():
-    with shipbook.run_in_context(job_name="nightly-billing", metadata={"tenant": "acme"}):
+    with shipbook.run_in_context(job_name="nightly-billing", attributes={"tenant": "acme"}):
         log.info("starting billing run")
         log.info("charged %d customers", 128)
         log.warning("1 payment method expired")

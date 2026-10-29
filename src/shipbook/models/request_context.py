@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
+from .attributes import Attributes
 from .user import User
 
 
@@ -23,6 +24,7 @@ class RequestContext:
     # The raw x-shipbook-session header of a linked caller; parsed by the server.
     caller_session_link: Optional[str] = None
     user: Optional[User] = None
-    metadata: Optional[dict[str, Any]] = None
+    # The app's own facts about a job's session; a request's go on its start event.
+    attributes: Optional[Attributes] = None
     is_background: bool = False
     job_name: Optional[str] = None
