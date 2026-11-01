@@ -14,12 +14,12 @@ def test_run_sets_and_resets():
 
 
 def test_run_in_context_marks_background_and_runs_a_request():
-    with shipbook.run_in_context(job_name="nightly", metadata={"k": "v"}) as ctx:
+    with shipbook.run_in_context(job_name="nightly", attributes={"k": "v"}) as ctx:
         active = context.get()
         assert active is ctx
         assert active.is_background is True
         assert active.job_name == "nightly"
-        assert active.metadata == {"k": "v"}
+        assert active.attributes == {"k": "v"}
         assert active.session_id
         assert active.request_id
     assert context.get() is None

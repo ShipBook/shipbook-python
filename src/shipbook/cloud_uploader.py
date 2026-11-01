@@ -85,9 +85,7 @@ class CloudUploader:
         self._send_now = False
         self._stopped = False
         # One background session per process, for logs and requests outside any other context.
-        self.background_context = RequestContext(
-            session_id=str(uuid.uuid4()), is_background=True, metadata={"type": "background"}
-        )
+        self.background_context = RequestContext(session_id=str(uuid.uuid4()), is_background=True)
         self._thread: Optional[threading.Thread] = None
         if self._start_worker:
             self._thread = threading.Thread(target=self._run, name="shipbook-uploader", daemon=True)
@@ -156,7 +154,7 @@ class CloudUploader:
             sdk_version=self._sdk_version,
             app_version=self._app_version,
             user=ctx.user,
-            metadata=ctx.metadata,
+            attributes=ctx.attributes,
             is_background=ctx.is_background,
             job_name=ctx.job_name,
             caller_session_link=ctx.caller_session_link,

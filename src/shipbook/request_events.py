@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional
 
 from . import _state
 from . import context as _context
+from .models.attributes import Attributes
 from .models.request_context import RequestContext
 from .models.request_event import RequestEvent, RequestEventPhase, RequestKind, RequestOutcome
 
@@ -44,37 +45,49 @@ def json_rpc_operation(body: Any) -> Optional[str]:
 
 
 class HttpRequest:
-    """One HTTP request's start and end events. Create it inside the request's context;
-    routing and body parsing may only be done by the end, so the end takes them again."""
+    """One HTTP request's start and end events. Create it inside the request's context with
+    its start; routing and body parsing may only be done by the end, so the end takes them again."""
 
-    def __init__(
-        self, ctx: RequestContext, method: str, route: str, operation: Optional[str] = None
-    ) -> None:
+    def __init__(self, ctx: RequestContext, start: RequestEvent) -> None:
         self._ctx = ctx
-        self._method = method
-        self._start = RequestEvent(
-            RequestEventPhase.Start, RequestKind.Http, method, route, operation
-        )
-        _push(ctx, self._start)
+        self._start = start
+        _push(ctx, start)
 
     def end(self, status: int, route: str, operation: Optional[str] = None) -> None:
         # As for an HTTP server span: a 4xx is the client's mistake, only a 5xx failed the request.
         outcome = RequestOutcome.Error if status >= 500 else RequestOutcome.Ok
         _push(
-            self._ctx,
-            RequestEvent(
-                RequestEventPhase.End,
-                RequestKind.Http,
-                self._method,
-                route,
-                operation,
-                self._ctx.start_time,
-                self._start.order_id,
-                status,
-                outcome,
-                _elapsed_ms(self._ctx),
-            ),
+            self._ctx, _end_request_event(self._start, self._ctx, route, operation, status, outcome)
         )
+
+
+def _end_request_event(
+    start: RequestEvent,
+    ctx: RequestContext,
+    route: Optional[str],
+    operation: Optional[str],
+    status: Optional[int],
+    outcome: RequestOutcome,
+    error_code: Optional[int] = None,
+) -> RequestEvent:
+    """The end repeats the start's facts, with the route and operation as known once it is done."""
+    return RequestEvent(
+        RequestEventPhase.End,
+        start.kind,
+        start.method,
+        route,
+        operation,
+        ctx.start_time,
+        start.order_id,
+        status,
+        outcome,
+        _elapsed_ms(ctx),
+        error_code,
+        path=start.path,
+        ip=start.ip,
+        user_agent=start.user_agent,
+        attributes=start.attributes,
+    )
 
 
 def _elapsed_ms(ctx: RequestContext) -> int:
@@ -96,22 +109,7 @@ def open_request(
     _push(ctx, start)
 
     def end(outcome: RequestOutcome, error_code: Optional[int] = None) -> None:
-        _push(
-            ctx,
-            RequestEvent(
-                RequestEventPhase.End,
-                kind,
-                None,
-                None,
-                operation,
-                ctx.start_time,
-                start.order_id,
-                None,
-                outcome,
-                _elapsed_ms(ctx),
-                error_code,
-            ),
-        )
+        _push(ctx, _end_request_event(start, ctx, None, operation, None, outcome, error_code))
 
     return ctx, end
 
@@ -145,7 +143,7 @@ def run_in_request(kind: RequestKind, operation: str) -> AbstractContextManager[
 
 
 def run_job(
-    job_name: str, metadata: Optional[dict[str, Any]] = None
+    job_name: str, attributes: Optional[Attributes] = None
 ) -> AbstractContextManager[RequestContext]:
     """Runs the block as a job run: its own session, run as one request of kind Job, so it
     is counted like an HTTP request and its start and end carry the job name, the duration
@@ -155,6 +153,6 @@ def run_job(
             charge_customers()
     """
     session = RequestContext(
-        session_id=str(uuid.uuid4()), metadata=metadata, is_background=True, job_name=job_name
+        session_id=str(uuid.uuid4()), attributes=attributes, is_background=True, job_name=job_name
     )
     return _run_request(session, RequestKind.Job, job_name)

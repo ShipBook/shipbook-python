@@ -1,12 +1,13 @@
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 from starlette.requests import Request
 from starlette.routing import Match
 
 from .. import context as _context
+from ..models.attributes import Attributes
 from ..models.user import User
 from ..request_events import HttpRequest, json_rpc_operation
-from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context
+from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_start
 
 
 class ShipbookMiddleware:
@@ -26,11 +27,11 @@ class ShipbookMiddleware:
         user_extractor: Optional[Callable[[Request], Optional[User]]] = None,
         session_extractor: Optional[Callable[[Request], Optional[str]]] = None,
         trace_extractor: Optional[Callable[[Request], Optional[str]]] = None,
-        metadata_extractor: Optional[Callable[[Request], dict[str, Any]]] = None,
+        attributes_extractor: Optional[Callable[[Request], Attributes]] = None,
     ) -> None:
         self.app = app
         self._extractors = Extractors(
-            user_extractor, session_extractor, trace_extractor, metadata_extractor
+            user_extractor, session_extractor, trace_extractor, attributes_extractor
         )
 
     async def __call__(self, scope, receive, send) -> None:
@@ -39,11 +40,13 @@ class ShipbookMiddleware:
             return
 
         request = Request(scope)
-        ctx = request_context(
+        ctx = request_context(request, self._extractors, request.headers.get)
+        start = request_start(
             request,
             self._extractors,
             request.headers.get,
             request.method,
+            request.url.path,
             request.url.path,
             request.client.host if request.client else None,
         )
@@ -79,7 +82,7 @@ class ShipbookMiddleware:
             if message["type"] == "http.response.body" and not message.get("more_body", False):
                 end()
 
-        tracker = HttpRequest(ctx, request.method, request.url.path)
+        tracker = HttpRequest(ctx, start)
         token = _context.set_context(ctx)
         try:
             await self.app(scope, receive_body, send_status)

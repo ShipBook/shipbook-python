@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from .attributes import Attributes
 from .user import User
 
 
@@ -32,7 +33,7 @@ class Session:
     sdk_version: str
     app_version: Optional[str] = None
     user: Optional[User] = None
-    metadata: Optional[dict[str, Any]] = None
+    attributes: Optional[Attributes] = None
     is_background: bool = False
     job_name: Optional[str] = None
     caller_session_link: Optional[str] = None
@@ -54,8 +55,8 @@ class Session:
         }
         if self.user is not None:
             d["userInfo"] = self.user.to_dict()
-        if self.metadata is not None:
-            d["metadata"] = self.metadata
+        if self.attributes is not None:
+            d["attributes"] = self.attributes
         if self.job_name is not None:
             d["jobName"] = self.job_name
         if self.caller_session_link is not None:

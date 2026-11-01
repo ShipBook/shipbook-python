@@ -55,7 +55,7 @@ def test_send_binds_request_context(uploader, connection):
         request_id="req-1",
         caller_session_link="1:client-app:client-sess",
         user=User(user_id="u1", email="u@x.com"),
-        metadata={"ip": "1.2.3.4"},
+        attributes={"tenant": "acme"},
         is_background=False,
     )
     with context.run(ctx):
@@ -66,7 +66,7 @@ def test_send_binds_request_context(uploader, connection):
     assert session["sessionId"] == "sess-1"
     assert session["isBackground"] is False
     assert session["userInfo"]["userId"] == "u1"
-    assert session["metadata"]["ip"] == "1.2.3.4"
+    assert session["attributes"]["tenant"] == "acme"
     assert session["callerSessionLink"] == "1:client-app:client-sess"
     log = session["logs"][0]
     assert log["traceId"] == "trace-abc"

@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, Generic, Optional, TypeVar
 
 from .. import _state
+from ..models.attributes import Attributes
 from ..models.request_context import RequestContext
+from ..models.request_event import RequestEvent, RequestEventPhase, RequestKind
 from ..models.user import User
 
 SESSION_LINK_HEADER = "x-shipbook-session"
@@ -22,7 +24,8 @@ class Extractors(Generic[R]):
     # Groups requests into one session (e.g. a login session); by default each is its own.
     session: Optional[Callable[[R], Optional[str]]] = None
     trace: Optional[Callable[[R], Optional[str]]] = None
-    metadata: Optional[Callable[[R], dict[str, Any]]] = None
+    # The app's own facts about the request, stored on its start event.
+    attributes: Optional[Callable[[R], Attributes]] = None
 
 
 def trace_from_headers(get: Callable[[str], Optional[str]]) -> Optional[str]:
@@ -38,9 +41,6 @@ def request_context(
     request: R,
     extractors: Extractors[R],
     header: Callable[[str], Optional[str]],
-    method: str,
-    path: str,
-    ip: Optional[str],
 ) -> RequestContext:
     caller_session_link = header(SESSION_LINK_HEADER)
     session_id = extractors.session(request) if extractors.session else None
@@ -52,19 +52,33 @@ def request_context(
         request_id=str(uuid.uuid4()),
         caller_session_link=caller_session_link,
         user=extractors.user(request) if extractors.user else None,
-        metadata={
-            "method": method,
-            "path": path,
-            "ip": ip,
-            "userAgent": header("user-agent"),
-            **(extractors.metadata(request) if extractors.metadata else {}),
-        },
         is_background=False,
     )
     runtime = _state.get_active()
     if runtime is not None:
         runtime.when_configured(lambda: runtime.uploader.start_request(ctx))
     return ctx
+
+
+def request_start(
+    request: R,
+    extractors: Extractors[R],
+    header: Callable[[str], Optional[str]],
+    method: str,
+    route: str,
+    path: str,
+    ip: Optional[str],
+) -> RequestEvent:
+    return RequestEvent(
+        RequestEventPhase.Start,
+        RequestKind.Http,
+        method,
+        route,
+        path=path,
+        ip=ip,
+        user_agent=header("user-agent"),
+        attributes=(extractors.attributes(request) if extractors.attributes else None) or None,
+    )
 
 
 def json_body(content_type: Optional[str], read: Callable[[], bytes]) -> Any:

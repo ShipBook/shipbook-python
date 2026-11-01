@@ -1,18 +1,19 @@
-from typing import Any, Optional
+from typing import Optional
 
 from asgiref.sync import iscoroutinefunction, markcoroutinefunction
 
 from .. import context as _context
+from ..models.attributes import Attributes
 from ..models.request_context import RequestContext
 from ..models.user import User
 from ..request_events import HttpRequest, json_rpc_operation
-from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context
+from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context, request_start
 
 
 class ShipbookMiddleware:
     """Django middleware (sync and async). Add ``"shipbook.integrations.django.ShipbookMiddleware"``
     to ``MIDDLEWARE``, after ``SessionMiddleware`` and ``AuthenticationMiddleware``. Subclass and
-    override the ``get_*`` methods to attach the user, group requests, or add metadata.
+    override the ``get_*`` methods to attach the user, group requests, or add attributes.
 
     By default a request joins its Django session (``request.session.session_key``) when it
     has one, as the Node SDK joins an express-session.
@@ -27,7 +28,7 @@ class ShipbookMiddleware:
         if self._async:
             markcoroutinefunction(self)
         self._extractors = Extractors(
-            self.get_user, self.get_session_id, self.get_trace_id, self.get_metadata
+            self.get_user, self.get_session_id, self.get_trace_id, self.get_attributes
         )
 
     def get_user(self, request) -> Optional[User]:
@@ -40,7 +41,7 @@ class ShipbookMiddleware:
     def get_trace_id(self, request) -> Optional[str]:
         return None
 
-    def get_metadata(self, request) -> dict[str, Any]:
+    def get_attributes(self, request) -> Attributes:
         return {}
 
     def __call__(self, request):
@@ -69,15 +70,21 @@ class ShipbookMiddleware:
 
     def _start(self, request) -> tuple[RequestContext, HttpRequest]:
         meta = request.META
-        ctx = request_context(
+
+        def header(name: str) -> Optional[str]:
+            return meta.get("HTTP_" + name.upper().replace("-", "_"))
+
+        ctx = request_context(request, self._extractors, header)
+        start = request_start(
             request,
             self._extractors,
-            lambda name: meta.get("HTTP_" + name.upper().replace("-", "_")),
+            header,
             request.method,
+            request.path,
             request.path,
             meta.get("REMOTE_ADDR"),
         )
-        return ctx, HttpRequest(ctx, request.method, request.path)
+        return ctx, HttpRequest(ctx, start)
 
     def _end(self, request, tracker: HttpRequest, status: int) -> None:
         match = getattr(request, "resolver_match", None)
