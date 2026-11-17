@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: System :: Logging",
+    "Typing :: Typed",
 ]
 dependencies = []
 
@@ -34,7 +35,7 @@ dev = ["pytest", "ruff", "mypy", "starlette", "httpx", "flask", "django", "mcp>=
 
 [project.urls]
 Homepage = "https://shipbook.io"
-Documentation = "https://docs.shipbook.io"
+Documentation = "https://www.shipbook.io/docs/python-log-integration"
 Source = "https://github.com/ShipBook/shipbook-python"
 
 [tool.hatch.version]

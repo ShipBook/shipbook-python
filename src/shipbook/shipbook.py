@@ -1,6 +1,7 @@
 import contextvars
 import logging
 import os
+import re
 import threading
 import time
 from collections.abc import Iterable
@@ -103,6 +104,11 @@ class _Runtime:
             self.uploader.set_config(config)
             held, self._held = self._held, []
         self.storage.set_obj(self._config_key, config_dict)
+        inner_log.debug(
+            "config applied: cloud %s, flush severity %s",
+            "on" if config.cloud_enabled else "off",
+            config.flush_severity.name,
+        )
         # The first config also takes what was held, each in the context it was logged in.
         for ctx, fn in held:
             ctx.run(fn)
@@ -160,6 +166,32 @@ _lock = threading.Lock()
 _connection_url: Optional[str] = None
 
 
+def _detect_app_version() -> Optional[str]:
+    """The version in the nearest pyproject.toml, from the working directory up, as the Node SDK
+    reads package.json's. The nearest file decides, also when it names no version: walking
+    past it would take the version of an unrelated project."""
+    folder = os.getcwd()
+    while True:
+        try:
+            with open(os.path.join(folder, "pyproject.toml"), encoding="utf-8") as f:
+                table = ""
+                for line in map(str.strip, f):
+                    if line.startswith("["):
+                        table = line.strip("[] ")
+                    elif table in ("project", "tool.poetry"):
+                        version = re.match(r"""version\s*=\s*["']([^"']+)["']""", line)
+                        if version:
+                            return version.group(1)
+                return None
+        except FileNotFoundError:
+            parent = os.path.dirname(folder)
+            if parent == folder:
+                return None
+            folder = parent
+        except (OSError, UnicodeDecodeError):
+            return None
+
+
 def start(
     app_id: str,
     app_key: str,
@@ -171,6 +203,9 @@ def start(
     in_app_include: Iterable[str] = (),
 ) -> None:
     """Start shipping logs. Returns at once: login runs in the background, logs queue meanwhile.
+
+    Without ``app_version`` the version is read from the nearest ``pyproject.toml``
+    (``[project]`` or ``[tool.poetry]``), from the working directory up.
 
     By default this attaches a :class:`ShipbookHandler` to the root logger, so
     every ``logging`` call in the process flows to Shipbook (gated by the
@@ -190,7 +225,7 @@ def start(
         if _runtime is not None:
             inner_log.warning("shipbook.start() called more than once - ignoring")
             return
-        runtime = _Runtime(app_id, app_key, app_version, _connection_url)
+        runtime = _Runtime(app_id, app_key, app_version or _detect_app_version(), _connection_url)
         _runtime = runtime
         _state.set_active(runtime)
 

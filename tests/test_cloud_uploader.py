@@ -2,6 +2,7 @@ import os
 import threading
 import time
 
+import shipbook
 from shipbook import context
 from shipbook.cloud_uploader import CloudUploader
 from shipbook.connection_client import Response
@@ -46,6 +47,17 @@ def test_send_groups_logs_into_session_payload(uploader, connection):
     assert session["deviceInfo"]["udid"]
     assert [log["message"] for log in session["logs"]] == ["one", "two"]
     assert session["logs"][0]["type"] == "message"
+
+
+def test_the_inner_log_says_what_went_up(uploader, connection, capsys):
+    shipbook.enable_inner_log(True)
+    try:
+        uploader.push(_msg(Severity.Info, "one"))
+        uploader.flush()
+    finally:
+        shipbook.enable_inner_log(False)
+
+    assert "Shipbook: sent 1 sessions with 1 logs" in capsys.readouterr().err
 
 
 def test_send_binds_request_context(uploader, connection):

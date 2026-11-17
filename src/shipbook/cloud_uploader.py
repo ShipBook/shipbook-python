@@ -243,6 +243,7 @@ class CloudUploader:
                 self._send_now = False
                 # No token: the queue stays (bounded by max_log_size) and a login sends it.
                 if not self._session_manager.get_token():
+                    inner_log.debug("not logged in, %d queued records wait", self._queue_size)
                     return
                 sessions = list(self._cloud_queue.values())
                 self._cloud_queue = {}
@@ -252,6 +253,8 @@ class CloudUploader:
 
             resp = self._connection.request("sessions/ingest", {"sessions": sessions}, "POST")
             if resp.ok:
+                logs = sum(len(session["logs"]) for session in sessions)
+                inner_log.debug("sent %d sessions with %d logs", len(sessions), logs)
                 return
             inner_log.error("ingest failed: %s %s", resp.status, resp.text[:200])
             # Unreachable or a server error: retry next window. A 4xx would fail the same way again.
