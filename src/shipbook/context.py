@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Callable, Optional
 
+from . import _state
 from .models.request_context import RequestContext
 from .models.user import User
 
@@ -63,11 +64,22 @@ def register_user(
     context = _ctx.get()
     if context is None:
         return
-    context.user = User(
-        user_id=user_id,
-        user_name=user_name,
-        full_name=full_name,
-        email=email,
-        phone_number=phone_number,
-        additional_info=additional_info,
+    set_user(
+        context,
+        User(
+            user_id=user_id,
+            user_name=user_name,
+            full_name=full_name,
+            email=email,
+            phone_number=phone_number,
+            additional_info=additional_info,
+        ),
     )
+
+
+def set_user(context: RequestContext, user: User) -> None:
+    """Sets the user of a context that already began, so the session it queued gets it too."""
+    context.user = user
+    runtime = _state.get_active()
+    if runtime is not None:
+        runtime.when_configured(lambda: runtime.uploader.attach_user(context))

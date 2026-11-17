@@ -1,10 +1,13 @@
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Generic, Optional, TypeVar
 
 from .. import _state
+from ..handler import ShipbookHandler
 from ..models.attributes import Attributes
+from ..models.frames import in_app
 from ..models.request_context import RequestContext
 from ..models.request_event import RequestEvent, RequestEventPhase, RequestKind
 from ..models.user import User
@@ -14,6 +17,12 @@ SESSION_LINK_HEADER = "x-shipbook-session"
 MAX_OPERATION_BODY = 1024 * 1024
 
 R = TypeVar("R")
+
+# Its own handler and no propagation: the server already prints the traceback, this only sends it.
+_unhandled_log = logging.getLogger("shipbook.unhandled")
+_unhandled_log.propagate = False
+_unhandled_log.setLevel(logging.ERROR)
+_unhandled_log.addHandler(ShipbookHandler())
 
 
 @dataclass
@@ -89,3 +98,28 @@ def json_body(content_type: Optional[str], read: Callable[[], bytes]) -> Any:
         return json.loads(raw) if raw and len(raw) <= MAX_OPERATION_BODY else None
     except Exception:  # noqa: BLE001 — an unreadable body just has no operation
         return None
+
+
+def record_unhandled(error: Exception, operation: str) -> None:
+    """An exception the framework lets through without logging it (Starlette, FastAPI): sent as
+    an error of the current request, from the innermost line of the app's own code."""
+    entries = []
+    tb = error.__traceback__
+    while tb is not None:
+        entries.append(tb)
+        tb = tb.tb_next
+    own = [entry for entry in entries if in_app(entry.tb_frame.f_code.co_filename)]
+    at = (own or entries)[-1]
+    code = at.tb_frame.f_code
+    _unhandled_log.handle(
+        _unhandled_log.makeRecord(
+            at.tb_frame.f_globals.get("__name__", _unhandled_log.name),
+            logging.ERROR,
+            code.co_filename,
+            at.tb_lineno,
+            "Unhandled exception in %s",
+            (operation,),
+            (type(error), error, error.__traceback__),
+            func=code.co_name,
+        )
+    )

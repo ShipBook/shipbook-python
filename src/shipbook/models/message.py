@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from .._util import next_order_id, to_iso
 from ..severity import Severity
-from .exception import stack_from_traceback
+from .exception import reason_with_causes, stack_from_traceback
 from .frames import to_frames
 
 _LOGGING_DIR = os.path.dirname(logging.__file__)
@@ -59,7 +59,7 @@ class Message:
             stack = stack_from_traceback(exc_tb)
             msg.exception = {
                 "name": exc_type.__name__,
-                "reason": str(exc_value),
+                "reason": reason_with_causes(exc_value),
                 "stackTrace": stack,
             }
             msg.stack_trace = stack

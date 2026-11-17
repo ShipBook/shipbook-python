@@ -1,3 +1,4 @@
+import json.decoder
 import os
 import sysconfig
 import traceback
@@ -44,6 +45,25 @@ def test_installed_packages_the_standard_library_and_the_runtime_are_not_the_app
         ]
     )
     assert [frame["inApp"] for frame in stack] == [True, False, False, False]
+
+
+def test_the_standard_library_as_python_imports_it_is_not_the_apps():
+    # Not the path sysconfig names: under Homebrew that one goes through a symlink.
+    assert not frames.in_app(json.decoder.__file__)
+    assert not frames.in_app(traceback.__file__)
+
+
+def test_a_library_folder_named_through_a_symlink_is_not_the_apps(tmp_path, monkeypatch):
+    (tmp_path / "Cellar" / "lib" / "json").mkdir(parents=True)
+    (tmp_path / "opt").symlink_to(tmp_path / "Cellar", target_is_directory=True)
+    monkeypatch.setattr(
+        frames, "_LIBRARY_DIRS", frames._library_dirs([str(tmp_path / "opt" / "lib")])
+    )
+    frames.in_app.cache_clear()
+
+    assert not frames.in_app(str(tmp_path / "Cellar" / "lib" / "json" / "decoder.py"))
+    assert not frames.in_app(str(tmp_path / "opt" / "lib" / "json" / "decoder.py"))
+    assert frames.in_app(str(tmp_path / "app" / "views.py"))
 
 
 def test_an_app_installed_as_a_package_is_named_in_app():

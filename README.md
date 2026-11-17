@@ -38,6 +38,10 @@ What ships is controlled by two independent gates:
 
 With the **Accumulate** config, logs below the warning level are held per request and uploaded only when that request logs a warning or error — as their context. Healthy requests cost nothing.
 
+What your app prints stays as it is. Python prints warnings and errors by itself only while no handler is attached, so the SDK prints them the same way when it is the only handler; once your app configures logging, its own handlers decide.
+
+`start()` takes your app's version from the nearest `pyproject.toml` (`[project]` or `[tool.poetry]`), from the working directory up. Pass `app_version="1.4.0"` to set it yourself.
+
 To point the SDK at another Shipbook API (for example a staging environment), call `shipbook.set_connection_url(url)` before `start()`.
 
 ## Attaching to a specific logger
@@ -51,7 +55,7 @@ logging.getLogger("myapp").addHandler(shipbook.get_handler())
 
 ## Web frameworks — read your server request by request
 
-A `LogRecord` doesn't know which request it belongs to. The framework integrations bind each request to a Shipbook **session**, so logs carry the user, client IP, and trace id. Each request is also recorded with its method, route (`/items/{item_id}`), status and duration, and its logs are grouped under it in the Logbook. A failed request (5xx) is always recorded, even if it logged nothing.
+A `LogRecord` doesn't know which request it belongs to. The framework integrations bind each request to a Shipbook **session**, so logs carry the user, client IP, and trace id. Each request is also recorded with its method, route (`/items/{item_id}`), status and duration, and its logs are grouped under it in the Logbook. A failed request (5xx) is always recorded, even if it logged nothing, and an exception your code didn't handle is sent as an error of that request.
 
 **FastAPI / Starlette**
 
@@ -85,6 +89,8 @@ app.add_middleware(
 ```
 
 Or call `shipbook.register_user(...)` anywhere inside the request. By default every request is its own session; on Django a request joins its Django session when it has one.
+
+On Django the signed-in user is attached without an extractor, once your view has read `request.user`: its id, username and email. The middleware never loads the user itself. Override `get_user` to attach something else, or to return `None` and attach nobody.
 
 **Linked apps.** When a client app with a Shipbook SDK calls your API, it sends an `x-shipbook-session` header. The request joins that client session, so the Logbook shows the whole flow — the app's logs and your server's — in one view.
 
@@ -138,6 +144,8 @@ pool.submit(shipbook.preserve_context(do_work))
 ## Crashes and shutdown
 
 An uncaught exception is captured and uploaded before Python prints it and exits, so the crash that killed your process reaches Shipbook. Exceptions in other threads are captured too, and exceptions in `asyncio` tasks arrive through `logging`.
+
+An exception raised from another one names its cause in its reason: `could not load the order (caused by KeyError: 'missing')`.
 
 Crashes are grouped in Loglytics by the innermost stack frame of your own code; frames from installed packages and the standard library are skipped. If your app is itself installed as a package (`pip install .`), name it so its frames count as yours:
 

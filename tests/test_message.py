@@ -69,6 +69,57 @@ def test_exception_captured_from_exc_info():
     assert d["stackTrace"] == d["exception"]["stackTrace"]
 
 
+def _reason_of(raiser):
+    try:
+        raiser()
+    except Exception:
+        import sys
+
+        rec = _record(level=logging.ERROR, exc_info=sys.exc_info())
+    return Message.from_record(rec, Severity.Error, include_stack=False).to_dict()["exception"]
+
+
+def test_an_exception_raised_from_another_names_its_cause():
+    def load_order():
+        try:
+            {}["missing"]
+        except KeyError as error:
+            raise RuntimeError("could not load the order") from error
+
+    exception = _reason_of(load_order)
+    assert exception["name"] == "RuntimeError"
+    assert exception["reason"] == "could not load the order (caused by KeyError: 'missing')"
+
+
+def test_an_exception_raised_while_handling_another_names_it():
+    def clean_up():
+        try:
+            {}["missing"]
+        except KeyError:
+            raise ValueError("cleanup failed")  # noqa: B904 — the implicit chain is the point
+
+    assert _reason_of(clean_up)["reason"] == "cleanup failed (while handling KeyError: 'missing')"
+
+
+def test_a_cause_the_app_suppressed_is_left_out():
+    def load_order():
+        try:
+            {}["missing"]
+        except KeyError:
+            raise RuntimeError("could not load the order") from None
+
+    assert _reason_of(load_order)["reason"] == "could not load the order"
+
+
+def test_a_chain_that_loops_ends():
+    def loop():
+        first, second = ValueError("first"), ValueError("second")
+        first.__cause__, second.__cause__ = second, first
+        raise first
+
+    assert _reason_of(loop)["reason"] == "first (caused by ValueError: second)"
+
+
 def test_include_stack_trims_sdk_and_logging_frames():
     msg = Message.from_record(_record(), Severity.Verbose, include_stack=True)
     d = msg.to_dict()
