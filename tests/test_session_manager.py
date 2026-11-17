@@ -41,6 +41,42 @@ def test_4xx_login_does_not_retry(connection):
     sm.destroy()
 
 
+def test_a_rejected_login_drops_the_token_it_had(connection):
+    connection.when("auth/loginSdkServer", login_response())
+    sm = SessionManager(connection)  # type: ignore[arg-type]
+    sm.login("app", "key")
+    assert sm.get_token() is not None
+
+    connection.when(
+        "auth/loginSdkServer",
+        Response(ok=False, status=401, reason="Unauthorized", data={"name": "AuthError"}),
+    )
+    assert sm.refresh() is False
+    assert sm.get_token() is None
+    sm.destroy()
+
+
+def test_a_busy_or_failing_server_is_asked_again_later(connection, monkeypatch):
+    delays = []
+    monkeypatch.setattr(SessionManager, "_schedule", lambda self, delay, fn: delays.append(delay))
+    sm = SessionManager(connection)  # type: ignore[arg-type]
+
+    connection.when("auth/loginSdkServer", Response(ok=False, status=503, reason="Unavailable"))
+    assert sm.login("app", "key") is None
+    connection.when(
+        "auth/loginSdkServer",
+        Response(ok=False, status=429, reason="Too Many Requests", retry_after=900),
+    )
+    assert sm.login("app", "key") is None
+    connection.when(
+        "auth/loginSdkServer",
+        Response(ok=False, status=429, reason="Too Many Requests", retry_after=999999),
+    )
+    assert sm.login("app", "key") is None
+
+    assert delays == [60, 900, 3600]
+
+
 def test_jwt_exp_decode():
     exp = int(time.time()) + 12345
     assert SessionManager._jwt_exp(make_jwt(exp)) == exp

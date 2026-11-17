@@ -6,6 +6,8 @@ from typing import Any, Callable, Optional
 
 DEFAULT_BASE_URL = "https://api.shipbook.io/v2/"
 _TIMEOUT = 30
+# The error name the server answers a 401 with when the token is merely too old.
+TOKEN_EXPIRED = "TokenExpired"
 
 
 @dataclass
@@ -15,6 +17,8 @@ class Response:
     reason: str
     data: Optional[Any] = None
     text: str = ""
+    # Seconds the server asked to wait (the Retry-After header), when it sent a number.
+    retry_after: Optional[int] = None
 
 
 class ConnectionClient:
@@ -39,7 +43,7 @@ class ConnectionClient:
         path: str,
         body: Optional[Any] = None,
         method: str = "GET",
-        _retried: bool = False,
+        allow_refresh: bool = True,
     ) -> Response:
         url = self.base_url + path
         headers = {"Content-Type": "application/json"}
@@ -62,14 +66,19 @@ class ConnectionClient:
                 )
         except urllib.error.HTTPError as e:
             raw = e.read().decode("utf-8", errors="replace")
-            if e.code == 401 and not _retried and self._refresh_token():
-                return self.request(path, body, method, _retried=True)
+            data = self._parse(raw)
+            # As in the other SDKs, only an expired token is refreshed, and once per request.
+            expired = e.code == 401 and isinstance(data, dict) and data.get("name") == TOKEN_EXPIRED
+            if expired and allow_refresh and self._refresh_token():
+                return self.request(path, body, method, allow_refresh=False)
+            retry_after = e.headers.get("Retry-After", "") if e.headers else ""
             return Response(
                 ok=False,
                 status=e.code,
                 reason=e.reason or "",
-                data=self._parse(raw),
+                data=data,
                 text=raw,
+                retry_after=int(retry_after) if retry_after.isdigit() else None,
             )
         except urllib.error.URLError as e:
             return Response(ok=False, status=0, reason=str(e.reason), text=str(e.reason))

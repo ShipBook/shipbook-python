@@ -5,9 +5,12 @@ import threading
 import time
 from typing import Callable, Optional
 
+from ._inner_log import inner_log
 from .connection_client import ConnectionClient
 
 _LOGIN_RETRY_SECONDS = 60
+_MAX_LOGIN_RETRY_SECONDS = 3600
+_TOO_MANY_REQUESTS = 429
 
 
 class SessionManager:
@@ -38,11 +41,13 @@ class SessionManager:
             return None
 
     def refresh(self) -> bool:
-        """Connection-client callback for a 401: re-login and apply new config."""
+        """Connection-client callback for an expired token: log in again, apply the new config."""
         config = self._do_login()
-        if config is not None and self.on_config:
+        if config is None:
+            return False
+        if self.on_config:
             self.on_config(config)
-        return self.get_token() is not None
+        return True
 
     def after_fork(self) -> None:
         """In a forked child: the parent's refresh timer thread is gone and its lock may be held."""
@@ -59,20 +64,41 @@ class SessionManager:
 
     def _do_login(self) -> Optional[dict]:
         assert self._app_id is not None and self._app_key is not None
+        # A login can't be fixed by logging in: refreshing on its own 401 would log in without end.
         resp = self._connection.request(
             "auth/loginSdkServer",
             {"appId": self._app_id, "appKey": self._app_key},
             "POST",
+            allow_refresh=False,
         )
         if not resp.ok or not resp.data:
-            # 4xx: bad appId/appKey or deleted app — no point retrying.
-            if 400 <= resp.status < 500:
+            if 400 <= resp.status < 500 and resp.status != _TOO_MANY_REQUESTS:
+                # Wrong credentials or a deleted app: no retry, and the old token is dropped.
+                inner_log.error(
+                    "login rejected with %s - check app_id and app_key; not retrying: %s",
+                    resp.status,
+                    resp.text[:200],
+                )
+                self._drop_token()
                 return None
-            self._schedule(_LOGIN_RETRY_SECONDS, self._proactive_refresh)
+            delay = min(max(resp.retry_after or 0, _LOGIN_RETRY_SECONDS), _MAX_LOGIN_RETRY_SECONDS)
+            inner_log.warning(
+                "login failed (%s %s), trying again in %ss", resp.status, resp.reason, delay
+            )
+            self._schedule(delay, self._proactive_refresh)
             return None
 
         self._set_token(resp.data.get("token"))
+        inner_log.info("logged in, the token is good for %ds", self._expires_at - time.time())
         return resp.data.get("config")
+
+    def _drop_token(self) -> None:
+        with self._lock:
+            self._token = None
+            self._expires_at = 0.0
+            if self._timer:
+                self._timer.cancel()
+                self._timer = None
 
     def _set_token(self, token: Optional[str]) -> None:
         with self._lock:
