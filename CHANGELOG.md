@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0]
+
+### Fixed
+- A wrong app key, or a deleted app, no longer makes the SDK log in over and over. It tries once and stays quiet until the next start.
+- `register_user()` inside a request or a job now attaches the user to its session.
+- Standard-library frames no longer count as your app's code under Homebrew's Python, so a crash is grouped by your own line.
+- The SDK no longer silences your console: Python's default printing of warnings and errors keeps working.
+- Django's own 4xx warnings ("Not Found: /x") are shown inside their request.
+
+### Added
+- FastAPI and Starlette: an exception your endpoint didn't handle is sent as an error of that request, with the line of your code that raised it.
+- Django: the signed-in user is attached by itself once your view has read `request.user`.
+- `start()` reads your app's version from the nearest `pyproject.toml`.
+- An exception raised from another names its cause.
+- Type hints ship with the package (`py.typed`).
+- `enable_inner_log(True)` reports the login and each upload, not only failures.
+
 ## [0.2.0]
 
 ### Changed
