@@ -1,0 +1,4 @@
+shipbook[fastapi]
+fastapi
+uvicorn
+python-dotenv
