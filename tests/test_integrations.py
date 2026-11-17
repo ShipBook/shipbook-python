@@ -87,6 +87,34 @@ def test_starlette_saves_a_failed_request_even_when_it_logged_nothing(active_run
     assert (end["status"], end["outcome"]) == (500, "error")
 
 
+def test_starlette_sends_the_exception_an_endpoint_let_through(active_runtime, connection):
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    def load_order():
+        raise LookupError("no such order")
+
+    async def endpoint(request):
+        _log(active_runtime, "about to fail")
+        load_order()
+
+    client = TestClient(_starlette_app([Route("/fail", endpoint)]), raise_server_exceptions=False)
+    assert client.get("/fail").status_code == 500
+
+    (session,) = _sent(active_runtime.uploader, connection)
+    start, before, error, end = session["logs"]
+    assert (start["event"], before["message"], end["status"]) == ("start", "about to fail", 500)
+    assert (error["severity"], error["message"]) == ("Error", "Unhandled exception in GET /fail")
+    assert (error["exception"]["name"], error["exception"]["reason"]) == (
+        "LookupError",
+        "no such order",
+    )
+    # Attributed to the app's line that raised, not to the middleware that caught it.
+    assert (error["tag"], error["function"]) == (__name__, "load_order")
+    assert error["fileName"] == __file__
+    assert error["requestId"] == start["requestId"]
+
+
 def test_starlette_labels_a_json_rpc_call_with_its_operation(active_runtime, connection):
     from starlette.responses import JSONResponse
     from starlette.routing import Route
@@ -243,3 +271,95 @@ def test_django_async_view_and_a_raised_error(active_runtime, connection, django
 
     end = _request_events(_sent(active_runtime.uploader, connection))[-1]
     assert (end["method"], end["status"], end["outcome"]) == ("POST", 500, "error")
+
+
+class _DjangoUser:
+    pk = 7
+    email = "sam@example.com"
+
+    def __init__(self, is_authenticated: bool) -> None:
+        self.is_authenticated = is_authenticated
+
+    def get_username(self) -> str:
+        return "sam"
+
+
+def _django_request_of(user, active_runtime, connection):
+    from django.http import HttpResponse
+    from django.test import RequestFactory
+
+    from shipbook.integrations.django import ShipbookMiddleware
+
+    def get_response(request):
+        # What reading request.user in a view leaves behind.
+        if user is not None:
+            request._cached_user = user
+        _log(active_runtime)
+        return HttpResponse("ok")
+
+    ShipbookMiddleware(get_response)(RequestFactory().get("/items/7"))
+    (session,) = _sent(active_runtime.uploader, connection)
+    return session
+
+
+def test_django_attaches_the_signed_in_user_the_view_read(active_runtime, connection, django_setup):
+    session = _django_request_of(_DjangoUser(is_authenticated=True), active_runtime, connection)
+    assert session["userInfo"] == {"userId": "7", "userName": "sam", "email": "sam@example.com"}
+
+
+def test_django_attaches_no_user_for_a_visitor(active_runtime, connection, django_setup):
+    session = _django_request_of(_DjangoUser(is_authenticated=False), active_runtime, connection)
+    assert "userInfo" not in session
+
+
+def test_django_does_not_load_the_user_itself(active_runtime, connection, django_setup):
+    from django.http import HttpResponse
+    from django.test import RequestFactory
+    from django.utils.functional import SimpleLazyObject
+
+    from shipbook.integrations.django import ShipbookMiddleware
+
+    def load_user():
+        raise AssertionError("the middleware read request.user")
+
+    def get_response(request):
+        _log(active_runtime)
+        return HttpResponse("ok")
+
+    request = RequestFactory().get("/items/7")
+    request.user = SimpleLazyObject(load_user)
+    ShipbookMiddleware(get_response)(request)
+
+    (session,) = _sent(active_runtime.uploader, connection)
+    assert "userInfo" not in session
+
+
+def test_django_puts_its_own_404_warning_in_the_request(active_runtime, connection, django_setup):
+    import logging
+
+    from django.http import HttpResponseNotFound
+    from django.test import RequestFactory
+    from django.utils.log import log_response
+
+    from shipbook.handler import ShipbookHandler
+    from shipbook.integrations.django import ShipbookMiddleware
+
+    request = RequestFactory().get("/nope")
+    response = ShipbookMiddleware(lambda request: HttpResponseNotFound())(request)
+    assert context.get() is None
+
+    django_log = logging.getLogger("django.request")
+    handler = ShipbookHandler()
+    django_log.addHandler(handler)
+    try:
+        # As Django's handler does once the middleware chain has returned.
+        log_response("Not Found: %s", request.path, response=response, request=request)
+    finally:
+        django_log.removeHandler(handler)
+
+    (session,) = _sent(active_runtime.uploader, connection)
+    assert session["isBackground"] is False
+    start, end, warning = session["logs"]
+    assert (start["event"], end["event"], end["status"]) == ("start", "end", 404)
+    assert (warning["severity"], warning["message"]) == ("Warning", "Not Found: /nope")
+    assert warning["requestId"] == start["requestId"]

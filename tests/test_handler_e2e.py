@@ -87,5 +87,31 @@ def test_handler_inert_before_start():
         log.removeHandler(handler)
 
 
+def test_an_app_that_never_configured_logging_still_gets_its_warnings_printed(capsys):
+    log = logging.getLogger("e2e.unconfigured")
+    handler = _attach(log)
+    try:
+        log.info("not printed without Shipbook either")
+        log.warning("printed as before")
+    finally:
+        log.removeHandler(handler)
+
+    assert capsys.readouterr().err == "printed as before\n"
+
+
+def test_an_app_with_its_own_handler_is_not_printed_a_second_time(capsys):
+    log = logging.getLogger("e2e.configured")
+    handler = _attach(log)
+    own = logging.NullHandler()
+    log.addHandler(own)
+    try:
+        log.warning("the app's handler decides what is printed")
+    finally:
+        log.removeHandler(handler)
+        log.removeHandler(own)
+
+    assert capsys.readouterr().err == ""
+
+
 def test_severity_value_ordering():
     assert Severity.Error.value < Severity.Warning.value < Severity.Info.value

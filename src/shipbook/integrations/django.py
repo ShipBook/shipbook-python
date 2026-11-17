@@ -13,10 +13,11 @@ from ._common import MAX_OPERATION_BODY, Extractors, json_body, request_context,
 class ShipbookMiddleware:
     """Django middleware (sync and async). Add ``"shipbook.integrations.django.ShipbookMiddleware"``
     to ``MIDDLEWARE``, after ``SessionMiddleware`` and ``AuthenticationMiddleware``. Subclass and
-    override the ``get_*`` methods to attach the user, group requests, or add attributes.
+    override the ``get_*`` methods to attach another user, group requests, or add attributes.
 
     By default a request joins its Django session (``request.session.session_key``) when it
-    has one, as the Node SDK joins an express-session.
+    has one, and carries the signed-in Django user, as the Node SDK joins an express-session
+    and picks up ``req.user``.
     """
 
     sync_capable = True
@@ -32,7 +33,17 @@ class ShipbookMiddleware:
         )
 
     def get_user(self, request) -> Optional[User]:
-        return None
+        """The signed-in Django user, once the view has read ``request.user``: reading it here
+        would cost every request a session and a database query. Asked when the request
+        begins and, without an answer, again when it ends. Return ``None`` to attach no user."""
+        user = getattr(request, "_cached_user", None) or getattr(request, "_acached_user", None)
+        if user is None or not user.is_authenticated:
+            return None
+        return User(
+            user_id=str(user.pk),
+            user_name=user.get_username(),
+            email=getattr(user, "email", None) or None,
+        )
 
     def get_session_id(self, request) -> Optional[str]:
         session = getattr(request, "session", None)
@@ -75,6 +86,8 @@ class ShipbookMiddleware:
             return meta.get("HTTP_" + name.upper().replace("-", "_"))
 
         ctx = request_context(request, self._extractors, header)
+        # Django logs a 4xx after this middleware has returned: the handler finds the request here.
+        request.shipbook_context = ctx
         start = request_start(
             request,
             self._extractors,
@@ -87,6 +100,10 @@ class ShipbookMiddleware:
         return ctx, HttpRequest(ctx, start)
 
     def _end(self, request, tracker: HttpRequest, status: int) -> None:
+        ctx = request.shipbook_context
+        user = None if ctx.user else self.get_user(request)
+        if user is not None:
+            _context.set_user(ctx, user)
         match = getattr(request, "resolver_match", None)
         route = "/" + match.route if match is not None and match.route else request.path
         small = int(request.META.get("CONTENT_LENGTH") or 0) <= MAX_OPERATION_BODY
