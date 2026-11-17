@@ -147,7 +147,7 @@ class CloudUploader:
             self._queue_size = 0
         queued = self._cloud_queue.get(ctx.session_id)
         if queued is not None:
-            # The user may be known only after the session was queued: a later request, register_user.
+            # The user may become known after the session was queued (a later request).
             if ctx.user is not None and "userInfo" not in queued:
                 queued["userInfo"] = ctx.user.to_dict()
             return queued
