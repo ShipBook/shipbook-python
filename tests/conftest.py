@@ -44,7 +44,7 @@ class FakeConnection:
         self._responses[path] = response
 
     def request(
-        self, path: str, body=None, method: str = "GET", _retried: bool = False
+        self, path: str, body=None, method: str = "GET", allow_refresh: bool = True
     ) -> Response:
         self.requests.append({"path": path, "body": body, "method": method})
         return self._responses.get(path, Response(ok=True, status=200, reason="OK", data={}))
