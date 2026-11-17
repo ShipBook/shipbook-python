@@ -133,6 +133,13 @@ class CloudUploader:
         with self._lock:
             self._session(ctx)["requests"] += 1
 
+    def attach_user(self, ctx: RequestContext) -> None:
+        """The context's user was set after it began: it goes up with the session, also when
+        nothing more is logged (the server then adds it to the session it already has)."""
+        assert ctx.user is not None
+        with self._lock:
+            self._session(ctx)["userInfo"] = ctx.user.to_dict()
+
     def _session(self, ctx: RequestContext) -> dict[str, Any]:
         if self._queue_size >= self._config.max_log_size:
             inner_log.debug("cloud queue over max_log_size, dropping it")
@@ -140,6 +147,9 @@ class CloudUploader:
             self._queue_size = 0
         queued = self._cloud_queue.get(ctx.session_id)
         if queued is not None:
+            # The user may be known only after the session was queued: a later request, register_user.
+            if ctx.user is not None and "userInfo" not in queued:
+                queued["userInfo"] = ctx.user.to_dict()
             return queued
 
         session = self._cloud_queue[ctx.session_id] = Session(
