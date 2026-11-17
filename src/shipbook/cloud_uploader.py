@@ -22,9 +22,7 @@ from .session_manager import SessionManager
 
 MACHINE_UDID_KEY = "machine_udid"
 
-# The server Platform enum has no "python" value yet, so sessions ride in as
-# "node" to be accepted by ingest.
-_PLATFORM = "node"
+_PLATFORM = "python"
 
 Log = Union[Message, ExceptionLog, RequestEvent]
 

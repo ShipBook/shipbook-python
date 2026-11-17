@@ -139,6 +139,12 @@ pool.submit(shipbook.preserve_context(do_work))
 
 An uncaught exception is captured and uploaded before Python prints it and exits, so the crash that killed your process reaches Shipbook. Exceptions in other threads are captured too, and exceptions in `asyncio` tasks arrive through `logging`.
 
+Crashes are grouped in Loglytics by the innermost stack frame of your own code; frames from installed packages and the standard library are skipped. If your app is itself installed as a package (`pip install .`), name it so its frames count as yours:
+
+```python
+shipbook.start(app_id="...", app_key="...", in_app_include=["myapp"])
+```
+
 Queued logs are uploaded before the process ends: at interpreter exit and on `SIGTERM`/`SIGINT` (a container stop or a deploy), waiting at most 2 seconds. Your own signal handlers still run afterwards, and a default `SIGTERM` still terminates the process. To flush or stop explicitly:
 
 ```python

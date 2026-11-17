@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Iterable
 from typing import Callable, Optional
 
 from . import _state
@@ -13,6 +14,7 @@ from .connection_client import ConnectionClient
 from .handler import ShipbookHandler
 from .hooks import exception_handler, exit_handler
 from .models.exception import ExceptionLog
+from .models.frames import set_in_app_include
 from .session_manager import SessionManager
 from .storage import Storage
 
@@ -166,6 +168,7 @@ def start(
     attach_to_root: bool = True,
     capture_level: Optional[int] = None,
     install_hooks: bool = True,
+    in_app_include: Iterable[str] = (),
 ) -> None:
     """Start shipping logs. Returns at once: login runs in the background, logs queue meanwhile.
 
@@ -177,6 +180,10 @@ def start(
 
     With ``install_hooks`` it also captures uncaught exceptions, and sends what's
     queued before the process ends (exit, SIGTERM, SIGINT), waiting at most 2 seconds.
+
+    Stack frames from installed packages and the standard library aren't the app's own,
+    which Loglytics uses to group crashes. If your app is itself installed as a package
+    (``pip install .``), name it in ``in_app_include``.
     """
     global _runtime
     with _lock:
@@ -187,6 +194,7 @@ def start(
         _runtime = runtime
         _state.set_active(runtime)
 
+    set_in_app_include(in_app_include)
     if capture_level is not None:
         logging.getLogger().setLevel(capture_level)
     if attach_to_root:

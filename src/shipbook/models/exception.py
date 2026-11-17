@@ -6,13 +6,11 @@ from types import TracebackType
 from typing import Any, Optional
 
 from .._util import next_order_id, to_iso
+from .frames import to_frames
 
 
 def stack_from_traceback(tb: Optional[TracebackType]) -> list[dict[str, Any]]:
-    return [
-        {"methodName": frame.name, "fileName": frame.filename, "lineNumber": frame.lineno}
-        for frame in traceback.extract_tb(tb)
-    ]
+    return to_frames(traceback.extract_tb(tb))
 
 
 @dataclass

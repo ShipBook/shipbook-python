@@ -8,6 +8,7 @@ from typing import Any, Optional
 from .._util import next_order_id, to_iso
 from ..severity import Severity
 from .exception import stack_from_traceback
+from .frames import to_frames
 
 _LOGGING_DIR = os.path.dirname(logging.__file__)
 _SDK_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -15,11 +16,11 @@ _SDK_DIR = os.path.dirname(os.path.dirname(__file__))
 
 def current_stack() -> list[dict[str, Any]]:
     """The caller's stack with logging-machinery and SDK frames trimmed out."""
-    return [
-        {"methodName": frame.name, "fileName": frame.filename, "lineNumber": frame.lineno}
+    return to_frames(
+        frame
         for frame in traceback.extract_stack()
         if not frame.filename.startswith((_LOGGING_DIR, _SDK_DIR))
-    ]
+    )
 
 
 @dataclass
