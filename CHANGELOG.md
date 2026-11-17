@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0]
+
+### Changed
+- Sessions are sent as platform `python`, so the console shows them as Python. Before, they appeared as Node.js.
+- Stack frames are sent innermost first, like the other SDKs. This applies to crashes, `logger.exception()` and call stacks.
+
+### Added
+- Each stack frame is marked as your app's code or not (the standard library and installed packages are not), so Loglytics groups a crash by its first line in your code. If your app is installed as a package, name it with `start(in_app_include=["myapp"])`.
+
 ## [0.1.0]
 
 First release of the Shipbook Python server SDK.
