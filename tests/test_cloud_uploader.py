@@ -120,6 +120,74 @@ def test_requeues_when_unreachable_or_on_a_server_error_but_not_on_a_4xx(uploade
     assert _ingest_calls(connection) == []
 
 
+_OK = Response(ok=True, status=200, reason="OK", data={})
+
+
+def _wait_for(predicate, timeout):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return predicate()
+
+
+def _worker(connection, session_manager, storage):
+    return CloudUploader(connection, session_manager, storage, config_with(maxTime=0.05))
+
+
+def test_a_busy_server_gets_nothing_before_retry_after_and_then_the_kept_logs(
+    connection, session_manager, storage
+):
+    connection.when("sessions/ingest", Response(ok=False, status=503, reason="busy", retry_after=1))
+    up = _worker(connection, session_manager, storage)
+    try:
+        up.push(_msg(message="kept"))
+        assert _wait_for(lambda: len(_ingest_calls(connection)) == 1, 2)
+        connection.when("sessions/ingest", _OK)
+        up.push(_msg(message="later"))
+        time.sleep(0.5)
+        assert len(_ingest_calls(connection)) == 1, "nothing goes up before Retry-After"
+
+        assert _wait_for(lambda: len(_ingest_calls(connection)) == 2, 2)
+        resent = _ingest_calls(connection)[-1]["body"]["sessions"]
+        assert [log["message"] for s in resent for log in s["logs"]] == ["kept", "later"]
+    finally:
+        up.shutdown(0.5)
+
+
+def test_a_429_without_retry_after_keeps_the_logs_and_holds_the_uploads(
+    connection, session_manager, storage
+):
+    connection.when("sessions/ingest", Response(ok=False, status=429, reason="busy"))
+    up = _worker(connection, session_manager, storage)
+    try:
+        up.push(_msg(message="kept"))
+        assert _wait_for(lambda: len(_ingest_calls(connection)) == 1, 2)
+        connection.when("sessions/ingest", _OK)
+        time.sleep(0.5)
+        assert len(_ingest_calls(connection)) == 1
+
+        connection.requests.clear()
+        up.flush()
+        assert _messages(connection) == ["kept"]
+    finally:
+        up.shutdown(0.5)
+
+
+def test_a_failing_server_is_retried_less_and_less_often(connection, session_manager, storage):
+    connection.when("sessions/ingest", Response(ok=False, status=500, reason="err"))
+    up = _worker(connection, session_manager, storage)
+    try:
+        up.push(_msg())
+        time.sleep(0.65)
+        # Every max_time (0.05 s) would be about 13 tries; doubling from 0.1 s is 3.
+        assert 2 <= len(_ingest_calls(connection)) <= 4
+    finally:
+        connection.when("sessions/ingest", _OK)
+        up.shutdown(0.5)
+
+
 def test_counts_a_sessions_requests_and_none_for_a_session_that_only_logged(uploader, connection):
     grouped = RequestContext(session_id="grouped")
     uploader.start_request(grouped)

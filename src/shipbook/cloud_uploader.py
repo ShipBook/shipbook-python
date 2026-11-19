@@ -24,6 +24,12 @@ MACHINE_UDID_KEY = "machine_udid"
 
 _PLATFORM = "python"
 
+# Busy (429/503): wait Retry-After, 300 s without one, at most an hour, as the mobile SDKs do.
+_BUSY_DEFAULT_SECONDS = 300
+_BUSY_MAX_SECONDS = 3600
+# Any other failure doubles the wait from max_time up to this.
+_FAILURE_MAX_SECONDS = 300
+
 Log = Union[Message, ExceptionLog, RequestEvent]
 
 
@@ -82,6 +88,9 @@ class CloudUploader:
         self._deadline: Optional[float] = None
         self._send_now = False
         self._stopped = False
+        # After a failed upload the worker sends nothing before this (an explicit flush still does).
+        self._held_until: Optional[float] = None
+        self._failures = 0
         # One background session per process, for logs and requests outside any other context.
         self.background_context = RequestContext(session_id=str(uuid.uuid4()), is_background=True)
         self._thread: Optional[threading.Thread] = None
@@ -221,18 +230,21 @@ class CloudUploader:
         while True:
             with self._lock:
                 while not self._due():
-                    wait = (
-                        None
-                        if self._deadline is None
-                        else max(self._deadline - time.monotonic(), 0)
-                    )
+                    wake_at = self._deadline if self._held_until is None else self._held_until
+                    wait = None if wake_at is None else max(wake_at - time.monotonic(), 0)
                     self._wake.wait(wait)
                 if self._stopped:
                     return
             self._send()
 
     def _due(self) -> bool:
-        if self._stopped or self._send_now:
+        if self._stopped:
+            return True
+        if self._held_until is not None:
+            if time.monotonic() < self._held_until:
+                return False
+            self._held_until = None
+        if self._send_now:
             return True
         return self._deadline is not None and time.monotonic() >= self._deadline
 
@@ -253,16 +265,24 @@ class CloudUploader:
 
             resp = self._connection.request("sessions/ingest", {"sessions": sessions}, "POST")
             if resp.ok:
+                self._failures = 0
                 logs = sum(len(session["logs"]) for session in sessions)
                 inner_log.debug("sent %d sessions with %d logs", len(sessions), logs)
                 return
             inner_log.error("ingest failed: %s %s", resp.status, resp.text[:200])
-            # Unreachable or a server error: retry next window. A 4xx would fail the same way again.
-            if resp.status == 0 or resp.status >= 500:
-                self._requeue(sessions)
+            # Busy: the server kept nothing and asks to resend later.
+            if resp.status in (429, 503):
+                busy = resp.retry_after or _BUSY_DEFAULT_SECONDS
+                self._requeue(sessions, min(busy, _BUSY_MAX_SECONDS))
+            # Unreachable or a server error: retry, backing off. A 4xx would fail the same again.
+            elif resp.status == 0 or resp.status >= 500:
+                self._failures += 1
+                backoff = self._config.max_time * 2**self._failures
+                self._requeue(sessions, min(backoff, _FAILURE_MAX_SECONDS))
 
-    def _requeue(self, sessions: list[dict[str, Any]]) -> None:
+    def _requeue(self, sessions: list[dict[str, Any]], wait: float) -> None:
         with self._lock:
+            self._held_until = time.monotonic() + wait
             for session in sessions:
                 queued = self._cloud_queue.get(session["sessionId"])
                 if queued is None:
@@ -273,8 +293,8 @@ class CloudUploader:
                     queued["requests"] += session["requests"]
                     self._queue_size += len(session["logs"])
             if self._deadline is None:
-                self._deadline = time.monotonic() + self._config.max_time
-                self._wake.notify()
+                self._deadline = self._held_until
+            self._wake.notify()
 
     def _init_udid(self) -> str:
         stored = self._storage.get_item(MACHINE_UDID_KEY)
