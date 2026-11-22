@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1]
+
+### Fixed
+- When the Shipbook server is busy, your logs are kept and sent after the wait the server asks for (5 minutes if it doesn't say). Before, the SDK resent them every 3 seconds, and lost them on a 429.
+- When the server can't be reached or answers with an error, the SDK still keeps your logs, but waits longer between tries, up to 5 minutes, instead of trying every 3 seconds.
+
 ## [0.3.0]
 
 ### Fixed
